@@ -28,6 +28,7 @@ export interface GameState {
   pendingRoll: { dice: DicePair; total: number; adjustment: number } | null
   pendingItemLevel: ItemLevel | null
   chainStreak: number
+  chainRiskFree: boolean
   lastChainResult: {
     outcome: ChainOutcome
     dice: DicePair

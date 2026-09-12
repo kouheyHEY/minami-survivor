@@ -113,6 +113,7 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2'], ran
     pendingRoll: null,
     pendingItemLevel: null,
     chainStreak: 0,
+    chainRiskFree: false,
     lastChainResult: null,
     nextLogId: 3,
     players: [
@@ -211,7 +212,9 @@ export function confirmRoll(state, options = {}) {
   next.pendingRoll.total = total;
 
   if (total === 7) {
+    const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
     next.chainStreak = 1;
+    next.chainRiskFree = player.position < opponent.position;
     next.lastChainResult = {
       outcome: 'started',
       dice: [...next.pendingRoll.dice],
@@ -223,6 +226,9 @@ export function confirmRoll(state, options = {}) {
     next.phase = 'chain-choice';
     next.pendingRoll = null;
     addLog(next, `${player.name}が7をキープ。移動は連鎖確定まで保留。`, 'accent');
+    if (next.chainRiskFree) {
+      addLog(next, `劣勢ボーナス発動。今回の連鎖は失敗してもペナルティなし。`, 'accent');
+    }
     return next;
   }
 
@@ -295,7 +301,13 @@ export function challengeChain(state, dice) {
   };
   addLog(next, `連鎖チャレンジは ${dice[0]} + ${dice[1]} = ${total}。`, 'danger');
   next.phase = 'chain-resolution';
-  addLog(next, `連鎖失敗。確定すると連鎖移動から2マス引かれる。`, 'danger');
+  addLog(
+    next,
+    next.chainRiskFree
+      ? `連鎖失敗。ただし劣勢ボーナスでペナルティなし。`
+      : `連鎖失敗。確定すると連鎖移動から2マス引かれる。`,
+    next.chainRiskFree ? 'accent' : 'danger',
+  );
   return next;
 }
 
@@ -306,16 +318,19 @@ export function resolveChain(state) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   const failed = next.lastChainResult?.outcome === 'failure';
-  const movement = next.chainStreak * 7 - (failed ? 2 : 0);
+  const penalty = failed && !next.chainRiskFree ? 2 : 0;
+  const movement = next.chainStreak * 7 - penalty;
   const previousPosition = player.position;
   player.position = Math.max(0, player.position + movement);
   const actualMovement = player.position - previousPosition;
   addLog(
     next,
-    failed
+    failed && next.chainRiskFree
+      ? `連鎖を確定。劣勢ボーナスでペナルティなし、7×${next.chainStreak}で${actualMovement}マス進み、${player.position}マス目へ。`
+      : failed
       ? `連鎖を確定。7×${next.chainStreak}−2で${actualMovement}マス進み、${player.position}マス目へ。`
       : `連鎖を確定。7×${next.chainStreak}で${actualMovement}マス進み、${player.position}マス目へ。`,
-    failed ? 'danger' : 'accent',
+    failed && !next.chainRiskFree ? 'danger' : 'accent',
   );
   if (checkWinner(next)) return next;
   exchangeItemsOnCollision(next);
@@ -338,6 +353,7 @@ export function endTurn(state) {
   next.pendingRoll = null;
   next.pendingItemLevel = null;
   next.chainStreak = 0;
+  next.chainRiskFree = false;
   next.lastChainResult = null;
   addLog(next, `${player.name}が番を終了。${next.players[nextPlayer].name}の番。`);
   return next;

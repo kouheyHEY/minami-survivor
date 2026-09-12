@@ -157,11 +157,15 @@ function ChainResult({ game }: { game: GameState }) {
   const resultKey = `${result.outcome}-${result.streak}-${result.dice.join('-')}`
 
   return (
-    <div key={resultKey} className={`chain-result ${failed ? 'is-failure' : 'is-success'}`} role="status">
+    <div key={resultKey} className={`chain-result ${failed ? 'is-failure' : 'is-success'} ${game.chainRiskFree ? 'is-risk-free' : ''}`} role="status">
       <div className="chain-result-copy">
         <span>{failed ? 'CHAIN FAILED' : result.outcome === 'started' ? 'CHAIN START' : 'CHAIN SUCCESS'}</span>
+        {game.chainRiskFree && <b className="risk-free-label">劣勢ボーナス · NO RISK</b>}
         <strong>{failed ? '連鎖失敗' : `${result.streak}連チャン！`}</strong>
-        <small>{failed ? '確定時に合計移動から−2' : `移動 +${result.streak * 7} を保留中`}</small>
+        <small>{failed
+          ? game.chainRiskFree ? `失敗ペナルティなし・移動 +${result.streak * 7}` : '確定時に合計移動から−2'
+          : game.chainRiskFree ? `失敗してもペナルティなし・移動 +${result.streak * 7} を保留中` : `移動 +${result.streak * 7} を保留中`}
+        </small>
       </div>
       <div className="chain-result-roll" aria-label={`連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`}>
         <b>{result.dice[0]}</b><i>+</i><b>{result.dice[1]}</b><i>{result.source === 'dice' ? '=' : '→'}</i><em>{result.total}</em>
@@ -257,7 +261,10 @@ function ActionPanel({ game }: { game: GameState }) {
         <>
           <ChainResult game={game} />
           <h2>連鎖結果を確定しよう</h2>
-          <p>連鎖分をまとめて進み、失敗ペナルティの2マスを引きます。</p>
+          <p>{game.chainRiskFree
+            ? '劣勢ボーナスにより、失敗ペナルティなしで連鎖分を進みます。'
+            : '連鎖分をまとめて進み、失敗ペナルティの2マスを引きます。'}
+          </p>
           <div className="action-buttons">
             <button className="primary-button" onClick={gameActions.resolveChain}>結果を確定して進む</button>
           </div>

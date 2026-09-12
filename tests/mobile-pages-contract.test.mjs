@@ -36,6 +36,8 @@ test('対戦画面は連鎖結果を明示し、スマホ盤面を横スクロ�
   ]);
 
   assert.match(screen, /連チャン/);
+  assert.match(screen, /劣勢ボーナス/);
+  assert.match(screen, /失敗ペナルティなし/);
   assert.match(screen, /chain-result/);
   assert.match(screen, /MATCH LOG/);
   assert.match(styles, /\.players-row\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);

@@ -46,6 +46,7 @@ test('7連鎖は成功で7マス追加し、失敗で2マス戻って終了す�
   assert.equal(state.players[0].position, 0);
   assert.equal(state.phase, 'chain-choice');
   assert.equal(state.chainStreak, 1);
+  assert.equal(state.chainRiskFree, false);
   assert.deepEqual(state.lastChainResult, {
     outcome: 'started',
     dice: [3, 4],
@@ -91,6 +92,23 @@ test('7連鎖は成功で7マス追加し、失敗で2マス戻って終了す�
   assert.equal(state.currentPlayer, 1);
   assert.equal(state.phase, 'awaiting-roll');
   assert.equal(state.chainStreak, 0);
+});
+
+test('劣勢で始めた連鎖は失敗してもペナルティなしで7マス進む', () => {
+  let state = createGame();
+  state.players[0].position = 10;
+  state.players[1].position = 20;
+
+  state = confirmRoll(roll(state, dice(3, 4)));
+  assert.equal(state.chainRiskFree, true);
+  assert.equal(state.players[0].position, 10);
+
+  state = challengeChain(state, dice(1, 1));
+  state = resolveChain(state);
+
+  assert.equal(state.players[0].position, 17);
+  assert.equal(state.phase, 'turn-complete');
+  assert.match(state.log[0].message, /ペナルティなし/);
 });
 
 test('次の通常ロールを始めると直前の連鎖結果を閉じる', () => {
