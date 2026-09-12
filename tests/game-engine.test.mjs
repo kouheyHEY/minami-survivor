@@ -1,0 +1,158 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  ITEM_TYPES,
+  challengeChain,
+  chooseItem,
+  confirmRoll,
+  createGame,
+  reroll,
+  roll,
+  stopChain,
+  useTobacco,
+} from '../src/game/engine.js';
+
+const dice = (a, b) => [a, b];
+
+test('後手は通常アイテム1個と初手振り直しを持って開始する', () => {
+  const state = createGame(['みなみ', 'ゲスト'], () => 0.5);
+
+  assert.equal(state.players[0].item, null);
+  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.CHARM, level: 'normal' });
+  assert.equal(state.players[1].openingRerollAvailable, true);
+  assert.equal(state.currentPlayer, 0);
+});
+
+test('通常の出目は合計分進み、相手へ手番が移る', () => {
+  const state = confirmRoll(roll(createGame(), dice(2, 4)));
+
+  assert.equal(state.players[0].position, 6);
+  assert.equal(state.currentPlayer, 1);
+  assert.equal(state.phase, 'awaiting-roll');
+});
+
+test('7連鎖は成功で7マス追加し、失敗で2マス戻って終了する', () => {
+  let state = confirmRoll(roll(createGame(), dice(3, 4)));
+  assert.equal(state.players[0].position, 7);
+  assert.equal(state.phase, 'chain-choice');
+
+  state = challengeChain(state, dice(2, 5));
+  assert.equal(state.players[0].position, 14);
+  assert.equal(state.phase, 'chain-choice');
+
+  state = challengeChain(state, dice(4, 4));
+  assert.equal(state.players[0].position, 12);
+  assert.equal(state.currentPlayer, 1);
+  assert.equal(state.phase, 'awaiting-roll');
+});
+
+test('合計3は未所持なら選択取得、所持中ならSUPER化する', () => {
+  let state = confirmRoll(roll(createGame(), dice(1, 2)));
+  assert.equal(state.phase, 'choose-item');
+
+  state = chooseItem(state, ITEM_TYPES.BADGE);
+  assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+
+  state = confirmRoll(roll(state, dice(1, 2)));
+  assert.deepEqual(state.players[1].item?.level, 'super');
+  assert.equal(state.currentPlayer, 0);
+});
+
+test('10と25は通常、45はSUPERのアイテムを取得する', () => {
+  let state = createGame();
+  state.players[0].position = 4;
+  state = confirmRoll(roll(state, dice(2, 4)));
+  assert.equal(state.phase, 'choose-item');
+  assert.equal(state.pendingItemLevel, 'normal');
+  state = chooseItem(state, ITEM_TYPES.TOBACCO);
+  assert.equal(state.players[0].item.level, 'normal');
+
+  state = createGame();
+  state.players[0].position = 19;
+  state = confirmRoll(roll(state, dice(2, 4)));
+  assert.equal(state.phase, 'choose-item');
+  assert.equal(state.pendingItemLevel, 'normal');
+
+  state = createGame();
+  state.players[1].position = 39;
+  state.players[1].item = null;
+  state.currentPlayer = 1;
+  state = confirmRoll(roll(state, dice(3, 3)));
+  assert.equal(state.phase, 'choose-item');
+  assert.equal(state.pendingItemLevel, 'super');
+  state = chooseItem(state, ITEM_TYPES.CHARM);
+  assert.equal(state.players[1].item.level, 'super');
+});
+
+test('7連鎖は挑戦せず現在位置を確定できる', () => {
+  let state = confirmRoll(roll(createGame(), dice(3, 4)));
+  state = stopChain(state);
+
+  assert.equal(state.players[0].position, 7);
+  assert.equal(state.currentPlayer, 1);
+  assert.equal(state.phase, 'awaiting-roll');
+});
+
+test('サイコロ移動で同じマスに着地すると所持アイテムを交換する', () => {
+  let state = createGame();
+  state.players[0].position = 8;
+  state.players[0].item = { type: ITEM_TYPES.BADGE, level: 'normal' };
+  state.players[1].position = 12;
+  state.players[1].item = { type: ITEM_TYPES.TOBACCO, level: 'super' };
+
+  state = confirmRoll(roll(state, dice(1, 3)));
+  assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.TOBACCO, level: 'super' });
+  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+});
+
+test('通常バッジで振り直し、SUPERバッジで出目を7にできる', () => {
+  let state = createGame();
+  state.players[0].item = { type: ITEM_TYPES.BADGE, level: 'normal' };
+  state = reroll(roll(state, dice(1, 1)), dice(3, 4), 'badge');
+  assert.equal(state.pendingRoll.total, 7);
+  assert.equal(state.players[0].item, null);
+
+  state = createGame();
+  state.players[0].item = { type: ITEM_TYPES.BADGE, level: 'super' };
+  state = confirmRoll(roll(state, dice(1, 1)), { useSuperBadge: true });
+  assert.equal(state.players[0].position, 7);
+  assert.equal(state.phase, 'chain-choice');
+  assert.equal(state.players[0].item, null);
+});
+
+test('チャームは通常±1、SUPER±2の範囲で合計値を調整して消費する', () => {
+  let state = createGame();
+  state.players[0].item = { type: ITEM_TYPES.CHARM, level: 'normal' };
+  state = confirmRoll(roll(state, dice(2, 4)), { adjustment: 1 });
+  assert.equal(state.players[0].position, 7);
+  assert.equal(state.players[0].item, null);
+
+  state = createGame();
+  state.players[0].item = { type: ITEM_TYPES.CHARM, level: 'super' };
+  state = confirmRoll(roll(state, dice(2, 3)), { adjustment: 2 });
+  assert.equal(state.players[0].position, 7);
+});
+
+test('タバコは通常なら自分-3/相手-7、SUPERなら相手だけ-7', () => {
+  let state = createGame();
+  state.players[0].position = 10;
+  state.players[1].position = 20;
+  state.players[0].item = { type: ITEM_TYPES.TOBACCO, level: 'normal' };
+  state = useTobacco(state);
+  assert.deepEqual(state.players.map((player) => player.position), [7, 13]);
+
+  state.players[0].item = { type: ITEM_TYPES.TOBACCO, level: 'super' };
+  state = useTobacco(state);
+  assert.deepEqual(state.players.map((player) => player.position), [7, 6]);
+});
+
+test('73マス以上へ到達すると即勝利する', () => {
+  let state = createGame();
+  state.players[0].position = 68;
+  state = confirmRoll(roll(state, dice(2, 4)));
+
+  assert.equal(state.status, 'won');
+  assert.equal(state.winner, 0);
+  assert.equal(state.players[0].position, 74);
+});
