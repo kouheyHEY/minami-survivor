@@ -83,7 +83,7 @@ function PlayerCard({ player, index, active }: { player: Player; index: number; 
         {active && <span className="turn-badge">TURN</span>}
       </div>
       <div className="position"><strong>{player.position}</strong><span>/ {GOAL}</span></div>
-      <div className={`item-slot ${item ? 'has-item' : ''}`}>
+      <div key={`${player.item?.type ?? 'empty'}-${itemLevel ?? 'none'}`} className={`item-slot ${item ? 'has-item' : ''}`}>
         {item ? (
           <><b>{item.icon}</b><span><strong>{item.label}</strong><small>{itemLevel === 'super' ? 'SUPER' : 'NORMAL'} · {item.short}</small></span></>
         ) : <span className="empty-item">NO ITEM</span>}
@@ -118,7 +118,7 @@ function Board({ players }: { players: GameState['players'] }) {
                 {space === GOAL && <span className="goal-label">GOAL</span>}
                 <div className="space-tokens">
                   {occupants.map(({ player, index }) => (
-                    <span key={player.id} className={`board-token player-${index + 1}`} title={player.name}>{player.name.slice(0, 1)}</span>
+                    <span key={`${player.id}-${player.position}`} className={`board-token player-${index + 1}`} title={player.name}>{player.name.slice(0, 1)}</span>
                   ))}
                 </div>
               </div>
@@ -134,17 +134,34 @@ function Dice({ value }: { value: number }) {
   return <span className="die" aria-label={`サイコロの目 ${value}`}>{value}</span>
 }
 
-function ChainResult({ game, compact = false }: { game: GameState; compact?: boolean }) {
+function EventStage({ events }: { events: GameState['log'] }) {
+  return (
+    <div className="event-stage" aria-live="assertive" aria-atomic="false">
+      {events.slice(0, 3).reverse().map((event, index) => (
+        <p
+          key={event.id}
+          className={`event-card ${event.tone}`}
+          style={{ animationDelay: `${index * 140}ms` }}
+        >
+          {event.message}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+function ChainResult({ game }: { game: GameState }) {
   const result = game.lastChainResult
   if (!result) return null
   const failed = result.outcome === 'failure'
+  const resultKey = `${result.outcome}-${result.streak}-${result.dice.join('-')}`
 
   return (
-    <div className={`chain-result ${failed ? 'is-failure' : 'is-success'} ${compact ? 'is-compact' : ''}`} role="status">
+    <div key={resultKey} className={`chain-result ${failed ? 'is-failure' : 'is-success'}`} role="status">
       <div className="chain-result-copy">
         <span>{failed ? 'CHAIN FAILED' : result.outcome === 'started' ? 'CHAIN START' : 'CHAIN SUCCESS'}</span>
         <strong>{failed ? '連鎖失敗' : `${result.streak}連チャン！`}</strong>
-        <small>{failed ? `${result.playerName}は2マス戻った` : '7マス追加で前進'}</small>
+        <small>{failed ? '確定時に合計移動から−2' : `移動 +${result.streak * 7} を保留中`}</small>
       </div>
       <div className="chain-result-roll" aria-label={`連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`}>
         <b>{result.dice[0]}</b><i>+</i><b>{result.dice[1]}</b><i>{result.source === 'dice' ? '=' : '→'}</i><em>{result.total}</em>
@@ -171,11 +188,10 @@ function ActionPanel({ game }: { game: GameState }) {
   }
 
   return (
-    <section className="action-panel" aria-live="polite">
+    <section className="action-panel">
       <div className="action-kicker">TURN {game.turn} — {player.name}</div>
       {game.phase === 'awaiting-roll' && (
         <>
-          {game.lastChainResult?.outcome === 'failure' && <ChainResult game={game} compact />}
           <h2>サイコロを振ろう</h2>
           <p>2つの出目の合計だけ進みます。</p>
           <div className="action-buttons">
@@ -189,10 +205,10 @@ function ActionPanel({ game }: { game: GameState }) {
 
       {game.phase === 'roll-options' && roll && (
         <>
-          <div className="dice-result"><Dice value={roll.dice[0]} /><Dice value={roll.dice[1]} /><span className="equals">=</span><strong>{roll.total}</strong></div>
+          <div className="dice-result"><Dice key={`die-1-${game.log[0]?.id}`} value={roll.dice[0]} /><Dice key={`die-2-${game.log[0]?.id}`} value={roll.dice[1]} /><span className="equals">=</span><strong>{roll.total}</strong></div>
           <h2>{roll.total === 7 ? '連鎖の入口！' : roll.total === 3 ? 'アイテムチャンス！' : `${roll.total}マス進む？`}</h2>
           <div className="action-buttons wrap">
-            <button className="primary-button" onClick={() => gameActions.confirm({})}>この出目で進む</button>
+            <button className="primary-button" onClick={() => gameActions.confirm({})}>{roll.total === 7 ? '7をキープ' : 'この出目で進む'}</button>
             {game.currentPlayer === 1 && player.turnsTaken === 0 && player.openingRerollAvailable && (
               <button className="ghost-button" onClick={() => gameActions.reroll('opening')}>後手補正で振り直す</button>
             )}
@@ -229,12 +245,34 @@ function ActionPanel({ game }: { game: GameState }) {
         <>
           <ChainResult game={game} />
           <h2>もう一度、7を狙う？</h2>
-          <p>成功すればさらに7マス。失敗すると2マス戻ります。</p>
+          <p>駒はまだ動きません。確定するとまとめて進みます。</p>
           <div className="action-buttons">
             <button className="primary-button" onClick={gameActions.challenge}>連鎖チャレンジ</button>
-            <button className="ghost-button" onClick={gameActions.stopChain}>ここで止める</button>
+            <button className="ghost-button" onClick={gameActions.resolveChain}>連鎖を確定して進む</button>
           </div>
         </>
+      )}
+
+      {game.phase === 'chain-resolution' && (
+        <>
+          <ChainResult game={game} />
+          <h2>連鎖結果を確定しよう</h2>
+          <p>連鎖分をまとめて進み、失敗ペナルティの2マスを引きます。</p>
+          <div className="action-buttons">
+            <button className="primary-button" onClick={gameActions.resolveChain}>結果を確定して進む</button>
+          </div>
+        </>
+      )}
+
+      {game.phase === 'turn-complete' && (
+        <div className="turn-complete-panel">
+          <span>ACTION COMPLETE</span>
+          <h2>{player.position}マス目で行動完了</h2>
+          <p>結果を確認してから、次のプレイヤーへ渡してください。</p>
+          <div className="action-buttons">
+            <button className="primary-button end-turn-button" onClick={gameActions.endTurn}>番を終わる →</button>
+          </div>
+        </div>
       )}
     </section>
   )
@@ -247,6 +285,7 @@ function GameScreen() {
 
   return (
     <main className="game-page">
+      <EventStage events={game.log} />
       <div className="game-toolbar">
         <div><span>LOCAL MATCH</span><strong>FIRST TO 73</strong></div>
         <button onClick={gameActions.reset}>名前入力へ戻る</button>

@@ -43,20 +43,10 @@ function addLog(state, message, tone = 'neutral') {
   state.nextLogId += 1;
 }
 
-function finishTurn(state) {
-  const player = state.players[state.currentPlayer];
-  player.turnsTaken += 1;
-  if (state.currentPlayer === 1 && player.turnsTaken === 1) {
-    player.openingRerollAvailable = false;
-  }
-
-  state.currentPlayer = state.currentPlayer === 0 ? 1 : 0;
-  state.turn += 1;
-  state.phase = 'awaiting-roll';
+function prepareTurnEnd(state) {
+  state.phase = 'turn-complete';
   state.pendingRoll = null;
   state.pendingItemLevel = null;
-  state.afterItemChoice = null;
-  state.chainStreak = 0;
   return state;
 }
 
@@ -81,12 +71,11 @@ function exchangeItemsOnCollision(state) {
   addLog(state, `同じ${current.position}マス目に着地。アイテムを交換！`, 'accent');
 }
 
-function continueAfterLanding(state, nextPhase) {
+function continueAfterLanding(state) {
   const player = state.players[state.currentPlayer];
   if (ITEM_SPACES.includes(player.position) && player.item === null) {
     state.phase = 'choose-item';
     state.pendingItemLevel = player.position === 45 ? 'super' : 'normal';
-    state.afterItemChoice = nextPhase;
     addLog(
       state,
       `${player.position}マス目のアイテムマス！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`,
@@ -95,21 +84,16 @@ function continueAfterLanding(state, nextPhase) {
     return state;
   }
 
-  if (nextPhase === 'chain-choice') {
-    state.phase = 'chain-choice';
-    state.pendingRoll = null;
-    return state;
-  }
-  return finishTurn(state);
+  return prepareTurnEnd(state);
 }
 
-function moveByDice(state, spaces, nextPhase) {
+function moveByDice(state, spaces) {
   const player = state.players[state.currentPlayer];
   player.position += spaces;
   addLog(state, `${player.name}が${spaces}マス進んで${player.position}マス目へ。`);
   if (checkWinner(state)) return state;
   exchangeItemsOnCollision(state);
-  return continueAfterLanding(state, nextPhase);
+  return continueAfterLanding(state);
 }
 
 export function createGame(names = ['プレイヤー1', 'プレイヤー2'], random = Math.random) {
@@ -128,7 +112,6 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2'], ran
     turn: 1,
     pendingRoll: null,
     pendingItemLevel: null,
-    afterItemChoice: null,
     chainStreak: 0,
     lastChainResult: null,
     nextLogId: 3,
@@ -237,6 +220,10 @@ export function confirmRoll(state, options = {}) {
       playerName: player.name,
       source: options.useSuperBadge ? 'super-badge' : adjustment !== 0 ? 'charm' : 'dice',
     };
+    next.phase = 'chain-choice';
+    next.pendingRoll = null;
+    addLog(next, `${player.name}が7をキープ。移動は連鎖確定まで保留。`, 'accent');
+    return next;
   }
 
   if (total === 3) {
@@ -248,17 +235,16 @@ export function confirmRoll(state, options = {}) {
     if (player.item === null) {
       next.phase = 'choose-item';
       next.pendingItemLevel = player.position === 45 ? 'super' : 'normal';
-      next.afterItemChoice = 'end-turn';
       addLog(next, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
       return next;
     }
 
     player.item.level = 'super';
     addLog(next, `合計3！ ${ITEM_LABELS[player.item.type]}がSUPERになった。`, 'accent');
-    return finishTurn(next);
+    return prepareTurnEnd(next);
   }
 
-  return moveByDice(next, total, total === 7 ? 'chain-choice' : 'end-turn');
+  return moveByDice(next, total);
 }
 
 export function chooseItem(state, itemType) {
@@ -275,14 +261,7 @@ export function chooseItem(state, itemType) {
     'accent',
   );
 
-  if (next.afterItemChoice === 'chain-choice') {
-    next.phase = 'chain-choice';
-    next.pendingItemLevel = null;
-    next.afterItemChoice = null;
-    next.pendingRoll = null;
-    return next;
-  }
-  return finishTurn(next);
+  return prepareTurnEnd(next);
 }
 
 export function challengeChain(state, dice) {
@@ -303,7 +282,7 @@ export function challengeChain(state, dice) {
       source: 'dice',
     };
     addLog(next, `7連鎖成功！ ${player.name}は${next.chainStreak}連チャン。`, 'accent');
-    return moveByDice(next, 7, 'chain-choice');
+    return next;
   }
 
   next.lastChainResult = {
@@ -315,16 +294,53 @@ export function challengeChain(state, dice) {
     source: 'dice',
   };
   addLog(next, `連鎖チャレンジは ${dice[0]} + ${dice[1]} = ${total}。`, 'danger');
-  player.position = Math.max(0, player.position - 2);
-  addLog(next, `連鎖失敗。${player.name}は2マス戻って${player.position}マス目へ。`, 'danger');
-  return finishTurn(next);
+  next.phase = 'chain-resolution';
+  addLog(next, `連鎖失敗。確定すると連鎖移動から2マス引かれる。`, 'danger');
+  return next;
 }
 
-export function stopChain(state) {
-  assertPhase(state, 'chain-choice');
+export function resolveChain(state) {
+  if (state.status !== 'playing' || !['chain-choice', 'chain-resolution'].includes(state.phase)) {
+    throw new Error('Action requires phase "chain-choice" or "chain-resolution".');
+  }
   const next = copy(state);
-  addLog(next, `${next.players[next.currentPlayer].name}は連鎖を確定した。`);
-  return finishTurn(next);
+  const player = next.players[next.currentPlayer];
+  const failed = next.lastChainResult?.outcome === 'failure';
+  const movement = next.chainStreak * 7 - (failed ? 2 : 0);
+  const previousPosition = player.position;
+  player.position = Math.max(0, player.position + movement);
+  const actualMovement = player.position - previousPosition;
+  addLog(
+    next,
+    failed
+      ? `連鎖を確定。7×${next.chainStreak}−2で${actualMovement}マス進み、${player.position}マス目へ。`
+      : `連鎖を確定。7×${next.chainStreak}で${actualMovement}マス進み、${player.position}マス目へ。`,
+    failed ? 'danger' : 'accent',
+  );
+  if (checkWinner(next)) return next;
+  exchangeItemsOnCollision(next);
+  return continueAfterLanding(next);
+}
+
+export function endTurn(state) {
+  assertPhase(state, 'turn-complete');
+  const next = copy(state);
+  const player = next.players[next.currentPlayer];
+  player.turnsTaken += 1;
+  if (next.currentPlayer === 1 && player.turnsTaken === 1) {
+    player.openingRerollAvailable = false;
+  }
+
+  const nextPlayer = next.currentPlayer === 0 ? 1 : 0;
+  next.currentPlayer = nextPlayer;
+  next.turn += 1;
+  next.phase = 'awaiting-roll';
+  next.pendingRoll = null;
+  next.pendingItemLevel = null;
+  next.chainStreak = 0;
+  next.lastChainResult = null;
+  addLog(next, `${player.name}が番を終了。${next.players[nextPlayer].name}の番。`);
+  return next;
 }
 
 export function useTobacco(state) {

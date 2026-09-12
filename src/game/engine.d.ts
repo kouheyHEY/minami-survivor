@@ -1,6 +1,6 @@
 export type ItemType = 'badge' | 'charm' | 'tobacco'
 export type ItemLevel = 'normal' | 'super'
-export type Phase = 'awaiting-roll' | 'roll-options' | 'choose-item' | 'chain-choice' | 'finished'
+export type Phase = 'awaiting-roll' | 'roll-options' | 'choose-item' | 'chain-choice' | 'chain-resolution' | 'turn-complete' | 'finished'
 export type LogTone = 'neutral' | 'accent' | 'danger' | 'win'
 export type DicePair = [number, number]
 export type ChainOutcome = 'started' | 'success' | 'failure'
@@ -27,7 +27,6 @@ export interface GameState {
   turn: number
   pendingRoll: { dice: DicePair; total: number; adjustment: number } | null
   pendingItemLevel: ItemLevel | null
-  afterItemChoice: 'chain-choice' | 'end-turn' | null
   chainStreak: number
   lastChainResult: {
     outcome: ChainOutcome
@@ -53,6 +52,7 @@ export function reroll(state: GameState, dice: DicePair, source: 'opening' | 'ba
 export function confirmRoll(state: GameState, options?: { adjustment?: number; useSuperBadge?: boolean }): GameState
 export function chooseItem(state: GameState, itemType: ItemType): GameState
 export function challengeChain(state: GameState, dice: DicePair): GameState
-export function stopChain(state: GameState): GameState
+export function resolveChain(state: GameState): GameState
+export function endTurn(state: GameState): GameState
 export function useTobacco(state: GameState): GameState
 export function randomDice(random?: () => number): DicePair

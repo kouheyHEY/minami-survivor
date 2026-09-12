@@ -44,6 +44,25 @@ test('対戦画面は連鎖結果を明示し、スマホ盤面を横スクロ�
   assert.match(styles, /@media \(max-height:\s*700px\)/);
 });
 
+test('手番終了と連鎖確定は明示ボタンで行い、全イベントに動きを与える', async () => {
+  const [screen, store, styles] = await Promise.all([
+    read('../src/screens/GamePage.tsx'),
+    read('../src/game/store.ts'),
+    read('../src/styles.css'),
+  ]);
+
+  assert.match(screen, /番を終わる/);
+  assert.match(screen, /連鎖を確定して進む/);
+  assert.match(store, /endTurn/);
+  assert.match(store, /resolveChain/);
+  assert.match(screen, /event-stage/);
+  assert.match(screen, /player\.id}-\${player\.position/);
+  assert.match(styles, /@keyframes event-arrive/);
+  assert.match(styles, /@keyframes token-arrive/);
+  assert.match(styles, /@keyframes dice-arrive/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*animation:\s*none\s*!important/);
+});
+
 test('GitHub Actionsがゲームだけを検証・ビルドしてPagesへ公開する', async () => {
   const workflow = await read('../.github/workflows/deploy-pages.yml');
 

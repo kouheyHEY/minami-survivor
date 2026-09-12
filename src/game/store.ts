@@ -4,10 +4,11 @@ import {
   chooseItem,
   confirmRoll,
   createGame,
+  endTurn,
   randomDice,
   reroll,
+  resolveChain,
   roll,
-  stopChain,
   useTobacco,
   type GameState,
   type ItemType,
@@ -78,8 +79,11 @@ export const gameActions = {
   challenge() {
     updateGame((game) => challengeChain(game, randomDice()))
   },
-  stopChain() {
-    updateGame(stopChain)
+  resolveChain() {
+    updateGame(resolveChain)
+  },
+  endTurn() {
+    updateGame(endTurn)
   },
   useTobacco() {
     updateGame(useTobacco)
