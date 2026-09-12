@@ -3,6 +3,7 @@ export type ItemLevel = 'normal' | 'super'
 export type Phase = 'awaiting-roll' | 'roll-options' | 'choose-item' | 'chain-choice' | 'finished'
 export type LogTone = 'neutral' | 'accent' | 'danger' | 'win'
 export type DicePair = [number, number]
+export type ChainOutcome = 'started' | 'success' | 'failure'
 
 export interface Item {
   type: ItemType
@@ -27,6 +28,15 @@ export interface GameState {
   pendingRoll: { dice: DicePair; total: number; adjustment: number } | null
   pendingItemLevel: ItemLevel | null
   afterItemChoice: 'chain-choice' | 'end-turn' | null
+  chainStreak: number
+  lastChainResult: {
+    outcome: ChainOutcome
+    dice: DicePair
+    total: number
+    streak: number
+    playerName: string
+    source: 'dice' | 'charm' | 'super-badge'
+  } | null
   nextLogId: number
   players: [Player, Player]
   log: Array<{ id: number; message: string; tone: LogTone }>

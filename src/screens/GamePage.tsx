@@ -134,6 +134,25 @@ function Dice({ value }: { value: number }) {
   return <span className="die" aria-label={`サイコロの目 ${value}`}>{value}</span>
 }
 
+function ChainResult({ game, compact = false }: { game: GameState; compact?: boolean }) {
+  const result = game.lastChainResult
+  if (!result) return null
+  const failed = result.outcome === 'failure'
+
+  return (
+    <div className={`chain-result ${failed ? 'is-failure' : 'is-success'} ${compact ? 'is-compact' : ''}`} role="status">
+      <div className="chain-result-copy">
+        <span>{failed ? 'CHAIN FAILED' : result.outcome === 'started' ? 'CHAIN START' : 'CHAIN SUCCESS'}</span>
+        <strong>{failed ? '連鎖失敗' : `${result.streak}連チャン！`}</strong>
+        <small>{failed ? `${result.playerName}は2マス戻った` : '7マス追加で前進'}</small>
+      </div>
+      <div className="chain-result-roll" aria-label={`連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`}>
+        <b>{result.dice[0]}</b><i>+</i><b>{result.dice[1]}</b><i>{result.source === 'dice' ? '=' : '→'}</i><em>{result.total}</em>
+      </div>
+    </div>
+  )
+}
+
 function ActionPanel({ game }: { game: GameState }) {
   const player = game.players[game.currentPlayer]
   const item = player.item
@@ -156,6 +175,7 @@ function ActionPanel({ game }: { game: GameState }) {
       <div className="action-kicker">TURN {game.turn} — {player.name}</div>
       {game.phase === 'awaiting-roll' && (
         <>
+          {game.lastChainResult?.outcome === 'failure' && <ChainResult game={game} compact />}
           <h2>サイコロを振ろう</h2>
           <p>2つの出目の合計だけ進みます。</p>
           <div className="action-buttons">
@@ -207,7 +227,7 @@ function ActionPanel({ game }: { game: GameState }) {
 
       {game.phase === 'chain-choice' && (
         <>
-          <div className="chain-seven">7</div>
+          <ChainResult game={game} />
           <h2>もう一度、7を狙う？</h2>
           <p>成功すればさらに7マス。失敗すると2マス戻ります。</p>
           <div className="action-buttons">
@@ -239,13 +259,13 @@ function GameScreen() {
         </div>
         <ActionPanel game={game} />
         <Board players={game.players} />
-        <section className="log-panel">
-          <div className="board-head"><div><span className="section-index">02</span><h2>MATCH LOG</h2></div></div>
+        <details className="log-panel">
+          <summary><span className="section-index">02</span><strong>MATCH LOG</strong><small>{game.log[0]?.message}</small></summary>
           {error && <p className="error-message" role="alert">{error}</p>}
           <ol>
             {game.log.map((entry) => <li key={entry.id} className={entry.tone}>{entry.message}</li>)}
           </ol>
-        </section>
+        </details>
       </div>
     </main>
   )

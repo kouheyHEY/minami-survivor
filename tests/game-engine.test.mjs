@@ -36,15 +36,51 @@ test('7連鎖は成功で7マス追加し、失敗で2マス戻って終了す�
   let state = confirmRoll(roll(createGame(), dice(3, 4)));
   assert.equal(state.players[0].position, 7);
   assert.equal(state.phase, 'chain-choice');
+  assert.equal(state.chainStreak, 1);
+  assert.deepEqual(state.lastChainResult, {
+    outcome: 'started',
+    dice: [3, 4],
+    total: 7,
+    streak: 1,
+    playerName: 'プレイヤー1',
+    source: 'dice',
+  });
 
   state = challengeChain(state, dice(2, 5));
   assert.equal(state.players[0].position, 14);
   assert.equal(state.phase, 'chain-choice');
+  assert.equal(state.chainStreak, 2);
+  assert.deepEqual(state.lastChainResult, {
+    outcome: 'success',
+    dice: [2, 5],
+    total: 7,
+    streak: 2,
+    playerName: 'プレイヤー1',
+    source: 'dice',
+  });
 
   state = challengeChain(state, dice(4, 4));
   assert.equal(state.players[0].position, 12);
   assert.equal(state.currentPlayer, 1);
   assert.equal(state.phase, 'awaiting-roll');
+  assert.equal(state.chainStreak, 0);
+  assert.deepEqual(state.lastChainResult, {
+    outcome: 'failure',
+    dice: [4, 4],
+    total: 8,
+    streak: 2,
+    playerName: 'プレイヤー1',
+    source: 'dice',
+  });
+});
+
+test('次の通常ロールを始めると直前の連鎖結果を閉じる', () => {
+  let state = confirmRoll(roll(createGame(), dice(3, 4)));
+  state = challengeChain(state, dice(1, 1));
+  assert.equal(state.lastChainResult.outcome, 'failure');
+
+  state = roll(state, dice(2, 3));
+  assert.equal(state.lastChainResult, null);
 });
 
 test('合計3は未所持なら選択取得、所持中ならSUPER化する', () => {

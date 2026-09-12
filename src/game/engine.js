@@ -56,6 +56,7 @@ function finishTurn(state) {
   state.pendingRoll = null;
   state.pendingItemLevel = null;
   state.afterItemChoice = null;
+  state.chainStreak = 0;
   return state;
 }
 
@@ -128,6 +129,8 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2'], ran
     pendingRoll: null,
     pendingItemLevel: null,
     afterItemChoice: null,
+    chainStreak: 0,
+    lastChainResult: null,
     nextLogId: 3,
     players: [
       {
@@ -158,6 +161,7 @@ export function roll(state, dice) {
   assertPhase(state, 'awaiting-roll');
   validateDice(dice);
   const next = copy(state);
+  next.lastChainResult = null;
   next.pendingRoll = { dice: [...dice], total: dice[0] + dice[1], adjustment: 0 };
   next.phase = 'roll-options';
   addLog(next, `${next.players[next.currentPlayer].name}の出目は ${dice[0]} + ${dice[1]} = ${next.pendingRoll.total}。`);
@@ -223,6 +227,18 @@ export function confirmRoll(state, options = {}) {
   next.pendingRoll.adjustment = adjustment;
   next.pendingRoll.total = total;
 
+  if (total === 7) {
+    next.chainStreak = 1;
+    next.lastChainResult = {
+      outcome: 'started',
+      dice: [...next.pendingRoll.dice],
+      total,
+      streak: 1,
+      playerName: player.name,
+      source: options.useSuperBadge ? 'super-badge' : adjustment !== 0 ? 'charm' : 'dice',
+    };
+  }
+
   if (total === 3) {
     player.position += 3;
     addLog(next, `${player.name}が3マス進んで${player.position}マス目へ。`, 'accent');
@@ -274,13 +290,31 @@ export function challengeChain(state, dice) {
   validateDice(dice);
   const next = copy(state);
   const total = dice[0] + dice[1];
-  addLog(next, `連鎖チャレンジは ${dice[0]} + ${dice[1]} = ${total}。`, total === 7 ? 'accent' : 'danger');
+  const player = next.players[next.currentPlayer];
 
   if (total === 7) {
+    next.chainStreak += 1;
+    next.lastChainResult = {
+      outcome: 'success',
+      dice: [...dice],
+      total,
+      streak: next.chainStreak,
+      playerName: player.name,
+      source: 'dice',
+    };
+    addLog(next, `7連鎖成功！ ${player.name}は${next.chainStreak}連チャン。`, 'accent');
     return moveByDice(next, 7, 'chain-choice');
   }
 
-  const player = next.players[next.currentPlayer];
+  next.lastChainResult = {
+    outcome: 'failure',
+    dice: [...dice],
+    total,
+    streak: next.chainStreak,
+    playerName: player.name,
+    source: 'dice',
+  };
+  addLog(next, `連鎖チャレンジは ${dice[0]} + ${dice[1]} = ${total}。`, 'danger');
   player.position = Math.max(0, player.position - 2);
   addLog(next, `連鎖失敗。${player.name}は2マス戻って${player.position}マス目へ。`, 'danger');
   return finishTurn(next);
@@ -319,4 +353,3 @@ export function useTobacco(state) {
 export function randomDice(random = Math.random) {
   return [1 + Math.floor(random() * 6), 1 + Math.floor(random() * 6)];
 }
-

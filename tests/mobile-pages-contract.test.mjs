@@ -29,6 +29,21 @@ test('スマホを基本レイアウトとし、広い画面だけmin-widthで�
   assert.doesNotMatch(styles, /@media \(max-width:/);
 });
 
+test('対戦画面は連鎖結果を明示し、スマホ盤面を横スクロール不要にする', async () => {
+  const [screen, styles] = await Promise.all([
+    read('../src/screens/GamePage.tsx'),
+    read('../src/styles.css'),
+  ]);
+
+  assert.match(screen, /連チャン/);
+  assert.match(screen, /chain-result/);
+  assert.match(screen, /MATCH LOG/);
+  assert.match(styles, /\.players-row\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(styles, /\.board-grid\s*{[^}]*grid-template-columns:\s*repeat\(15,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.doesNotMatch(styles, /\.board-grid\s*{[^}]*min-width:\s*690px/s);
+  assert.match(styles, /@media \(max-height:\s*700px\)/);
+});
+
 test('GitHub Actionsがゲームだけを検証・ビルドしてPagesへ公開する', async () => {
   const workflow = await read('../.github/workflows/deploy-pages.yml');
 
