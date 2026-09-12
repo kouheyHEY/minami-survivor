@@ -12,7 +12,7 @@ test('GitHub Pages配下で直接開けるHash RouterとVite baseを使う', asy
 
   assert.match(router, /createHashHistory/);
   assert.match(router, /history:\s*createHashHistory\(\)/);
-  assert.match(vite, /base:\s*['"]\/synote\/['"]/);
+  assert.match(vite, /base:\s*['"]\/minami-survivor\/['"]/);
 });
 
 test('スマホを基本レイアウトとし、広い画面だけmin-widthで拡張する', async () => {
@@ -30,13 +30,11 @@ test('スマホを基本レイアウトとし、広い画面だけmin-widthで�
 });
 
 test('GitHub Actionsがゲームだけを検証・ビルドしてPagesへ公開する', async () => {
-  const workflow = await read('../../../.github/workflows/deploy-minami-survivor-pages.yml');
+  const workflow = await read('../.github/workflows/deploy-pages.yml');
 
-  assert.match(workflow, /working-directory:\s*games\/minami-survivor/);
   assert.match(workflow, /run:\s*npm ci/);
   assert.match(workflow, /run:\s*npm test/);
   assert.match(workflow, /run:\s*npm run build/);
-  assert.match(workflow, /path:\s*games\/minami-survivor\/dist/);
+  assert.match(workflow, /path:\s*dist/);
   assert.match(workflow, /actions\/deploy-pages@v4/);
 });
-

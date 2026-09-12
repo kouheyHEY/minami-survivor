@@ -2,7 +2,7 @@
 
 React、TanStack Router、TanStack Storeを基盤にした、1端末2人対戦の初期版です。
 
-公開版: https://kouheyhey.github.io/synote/
+公開版: https://kouheyhey.github.io/minami-survivor/
 
 ## 起動
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-ローカルURLは `http://localhost:4174/synote/` です。画面はスマートフォンを基本に設計し、幅621px以上と901px以上で段階的に拡張します。
+ローカルURLは `http://localhost:4174/minami-survivor/` です。画面はスマートフォンを基本に設計し、幅621px以上と901px以上で段階的に拡張します。
 
 ## 検証
 
