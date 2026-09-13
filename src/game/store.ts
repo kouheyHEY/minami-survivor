@@ -1,5 +1,6 @@
 import { createStore } from '@tanstack/react-store'
 import {
+  advanceMovement,
   challengeChain,
   chooseItem,
   confirmRoll,
@@ -15,6 +16,9 @@ import {
   type GameState,
   type ItemType,
 } from './engine.js'
+
+const MOVEMENT_STEP_MS = 160
+let movementTimer: ReturnType<typeof setTimeout> | null = null
 
 interface AppState {
   screen: 'setup' | 'game'
@@ -41,6 +45,26 @@ function updateGame(action: (game: GameState) => GameState) {
   })
 }
 
+function stopMovement() {
+  if (movementTimer !== null) clearTimeout(movementTimer)
+  movementTimer = null
+}
+
+function scheduleMovement() {
+  stopMovement()
+  if (gameStore.state.game?.phase !== 'moving') return
+  movementTimer = setTimeout(() => {
+    movementTimer = null
+    updateGame(advanceMovement)
+    scheduleMovement()
+  }, MOVEMENT_STEP_MS)
+}
+
+function updateAndSchedule(action: (game: GameState) => GameState) {
+  updateGame(action)
+  scheduleMovement()
+}
+
 export const gameActions = {
   setName(index: 0 | 1, name: string) {
     gameStore.setState((state) => ({
@@ -49,6 +73,7 @@ export const gameActions = {
     }))
   },
   start() {
+    stopMovement()
     gameStore.setState((state) => ({
       ...state,
       screen: 'game',
@@ -57,9 +82,11 @@ export const gameActions = {
     }))
   },
   reset() {
+    stopMovement()
     gameStore.setState((state) => ({ ...state, screen: 'setup', game: null, error: '' }))
   },
   playAgain() {
+    stopMovement()
     gameStore.setState((state) => ({
       ...state,
       game: createGame(state.names),
@@ -70,22 +97,22 @@ export const gameActions = {
     updateGame((game) => roll(game, randomDice()))
   },
   confirm(options: { adjustment?: number; useSuperBadge?: boolean }) {
-    updateGame((game) => confirmRoll(game, options))
+    updateAndSchedule((game) => confirmRoll(game, options))
   },
   reroll(source: 'opening' | 'badge') {
     updateGame((game) => reroll(game, randomDice(), source))
   },
   chooseItem(itemType: ItemType) {
-    updateGame((game) => chooseItem(game, itemType))
+    updateAndSchedule((game) => chooseItem(game, itemType))
   },
   challenge() {
     updateGame((game) => challengeChain(game, randomDice()))
   },
   resolveChain() {
-    updateGame(resolveChain)
+    updateAndSchedule(resolveChain)
   },
   takeRankBonus() {
-    updateGame(takeRankBonus)
+    updateAndSchedule(takeRankBonus)
   },
   skipRankBonus() {
     updateGame(skipRankBonus)

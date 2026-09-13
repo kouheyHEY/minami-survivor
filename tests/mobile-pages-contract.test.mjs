@@ -57,6 +57,8 @@ test('手番終了と連鎖確定は明示ボタンで行い、全イベント�
   assert.match(screen, /ここまでを確定して進む/);
   assert.match(store, /endTurn/);
   assert.match(store, /resolveChain/);
+  assert.match(store, /advanceMovement/);
+  assert.match(store, /setTimeout/);
   assert.match(screen, /event-stage/);
   assert.match(screen, /player\.id}-\${player\.position/);
   assert.match(styles, /@keyframes event-arrive/);

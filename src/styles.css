@@ -139,6 +139,11 @@ button { cursor: pointer; }
 .chain-result-roll em { color: var(--orange); font-size: 20px; font-style: normal; font-weight: 500; }
 .turn-complete-panel { animation: panel-arrive .42s ease-out; }
 .turn-complete-panel > span { font: 500 8px 'DM Mono'; letter-spacing: .1em; color: #6f7d19; }
+.moving-panel { animation: panel-arrive .3s ease-out; }
+.moving-panel > span { font: 500 8px 'DM Mono'; letter-spacing: .1em; color: var(--orange); }
+.moving-panel p strong { color: var(--ink); }
+.movement-meter { height: 7px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: #e5e2d7; }
+.movement-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--orange), var(--lime)); transition: width .15s linear; }
 .end-turn-button { background: var(--orange); box-shadow: 0 7px 0 #923310; }
 .end-turn-button:hover { box-shadow: 0 9px 0 #923310; }
 .end-turn-button:active { box-shadow: 0 2px 0 #923310; }

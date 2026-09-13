@@ -18,6 +18,7 @@ function addLog(state, message, tone = 'neutral') {
 function prepareTurnEnd(state) {
   state.phase = 'turn-complete';
   state.pendingRoll = null;
+  state.pendingMovement = null;
   state.pendingItemLevel = null;
   state.pendingAfterItemPhase = null;
   return state;
@@ -29,6 +30,7 @@ function checkWinner(state) {
   state.winner = state.currentPlayer;
   state.phase = 'finished';
   state.pendingRoll = null;
+  state.pendingMovement = null;
   addLog(state, `${player.name}が${player.position}マス目に到達。勝利！`, 'win');
   return true;
 }
@@ -39,7 +41,6 @@ function exchangeItemsOnCollision(state) {
   [current.item, opponent.item] = [opponent.item, current.item];
   addLog(state, `同じ${current.position}マス目に着地。アイテムを交換！`, 'accent');
 }
-const crossedItemSpace = (from, to) => ITEM_SPACES.find((space) => from < space && space <= to) ?? null;
 function phaseAfterMainMovement(state) {
   const player = state.players[state.currentPlayer];
   const opponent = state.players[state.currentPlayer === 0 ? 1 : 0];
@@ -49,14 +50,12 @@ function offerItem(state, itemSpace, afterPhase) {
   state.phase = 'choose-item';
   state.pendingItemLevel = itemSpace === 45 ? 'super' : 'normal';
   state.pendingAfterItemPhase = afterPhase;
-  addLog(state, `${itemSpace}マス目のアイテムマスを通過！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`, 'accent');
+  addLog(state, `${itemSpace}マス目のアイテムマスに到着！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`, 'accent');
   return state;
 }
-function continueAfterMovement(state, from, allowRankBonus = true) {
+function continueAfterMovement(state, allowRankBonus = true) {
   const player = state.players[state.currentPlayer];
   const afterPhase = allowRankBonus ? phaseAfterMainMovement(state) : 'turn-complete';
-  const itemSpace = player.item === null ? crossedItemSpace(from, player.position) : null;
-  if (itemSpace !== null) return offerItem(state, itemSpace, afterPhase);
   if (afterPhase === 'rank-bonus-choice') {
     state.phase = afterPhase;
     state.pendingRoll = null;
@@ -65,21 +64,46 @@ function continueAfterMovement(state, from, allowRankBonus = true) {
   }
   return prepareTurnEnd(state);
 }
-function moveByDice(state, spaces) {
+function startMovement(state, spaces, options = {}) {
   const player = state.players[state.currentPlayer];
-  const from = player.position;
-  player.position += spaces;
-  addLog(state, `${player.name}が${spaces}マス進んで${player.position}マス目へ。`);
-  if (checkWinner(state)) return state;
-  exchangeItemsOnCollision(state);
-  return continueAfterMovement(state, from);
+  state.phase = 'moving';
+  state.pendingRoll = null;
+  state.pendingMovement = {
+    remaining: spaces,
+    total: spaces,
+    kind: options.kind || 'main',
+    triggerSumThree: options.triggerSumThree || false,
+    exchangeOnComplete: options.exchangeOnComplete ?? true,
+    allowRankBonus: options.allowRankBonus ?? true,
+  };
+  addLog(state, `${player.name}が${spaces}マスの移動を開始。`, options.tone || 'neutral');
+  return state;
+}
+function finishMovement(state) {
+  const movement = state.pendingMovement;
+  const player = state.players[state.currentPlayer];
+  state.pendingMovement = null;
+  addLog(state, `${player.name}が${player.position}マス目に到着。`, movement.kind === 'main' ? 'neutral' : 'accent');
+  if (movement.exchangeOnComplete) exchangeItemsOnCollision(state);
+  if (movement.triggerSumThree) {
+    if (player.item === null) {
+      state.phase = 'choose-item';
+      state.pendingItemLevel = 'normal';
+      state.pendingAfterItemPhase = movement.allowRankBonus ? phaseAfterMainMovement(state) : 'turn-complete';
+      addLog(state, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
+      return state;
+    }
+    player.item.level = 'super';
+    addLog(state, `合計3！ ${ITEM_LABELS[player.item.type]}がSUPERになった。`, 'accent');
+  }
+  return continueAfterMovement(state, movement.allowRankBonus);
 }
 
 export function createGame(names = ['プレイヤー1', 'プレイヤー2']) {
   const normalizedNames = [0, 1].map((index) => String(names[index] || '').trim() || `プレイヤー${index + 1}`);
   return {
     status: 'playing', phase: 'awaiting-roll', currentPlayer: 0, winner: null, turn: 1,
-    pendingRoll: null, pendingItemLevel: null, pendingAfterItemPhase: null,
+    pendingRoll: null, pendingMovement: null, pendingItemLevel: null, pendingAfterItemPhase: null,
     chainStreak: 0, chainTotal: 0, lastChainResult: null, nextLogId: 3,
     players: [
       { id: 'player-1', name: normalizedNames[0], position: 0, item: null, turnsTaken: 0, openingRerollAvailable: false },
@@ -156,24 +180,27 @@ export function confirmRoll(state, options = {}) {
     return next;
   }
   if (total === 3) {
-    const from = player.position;
-    player.position += 3;
-    addLog(next, `${player.name}が3マス進んで${player.position}マス目へ。`, 'accent');
-    if (checkWinner(next)) return next;
-    exchangeItemsOnCollision(next);
-    const crossed = crossedItemSpace(from, player.position);
-    if (player.item === null) {
-      next.phase = 'choose-item';
-      next.pendingItemLevel = crossed === 45 ? 'super' : 'normal';
-      next.pendingAfterItemPhase = phaseAfterMainMovement(next);
-      addLog(next, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
-      return next;
-    }
-    player.item.level = 'super';
-    addLog(next, `合計3！ ${ITEM_LABELS[player.item.type]}がSUPERになった。`, 'accent');
-    return continueAfterMovement(next, from);
+    return startMovement(next, 3, { triggerSumThree: true, tone: 'accent' });
   }
-  return moveByDice(next, total);
+  return startMovement(next, total);
+}
+
+export function advanceMovement(state) {
+  assertPhase(state, 'moving');
+  const next = copy(state);
+  const movement = next.pendingMovement;
+  if (!movement) throw new Error('No movement is pending.');
+  const player = next.players[next.currentPlayer];
+  if (movement.remaining > 0) {
+    player.position += 1;
+    movement.remaining -= 1;
+    if (checkWinner(next)) return next;
+    if (player.item === null && ITEM_SPACES.includes(player.position)) {
+      return offerItem(next, player.position, 'moving');
+    }
+  }
+  if (movement.remaining > 0) return next;
+  return finishMovement(next);
 }
 
 export function chooseItem(state, itemType) {
@@ -187,6 +214,10 @@ export function chooseItem(state, itemType) {
   const nextPhase = next.pendingAfterItemPhase || 'turn-complete';
   next.pendingItemLevel = null;
   next.pendingAfterItemPhase = null;
+  if (nextPhase === 'moving') {
+    next.phase = 'moving';
+    return next;
+  }
   if (nextPhase === 'rank-bonus-choice') {
     next.phase = nextPhase;
     addLog(next, `${player.name}は現在2位。順位ボーナスで1マス追加できる。`, 'accent');
@@ -217,13 +248,8 @@ export function challengeChain(state, dice) {
 export function resolveChain(state) {
   if (state.status !== 'playing' || !['chain-choice', 'chain-resolution'].includes(state.phase)) throw new Error('Action requires phase "chain-choice" or "chain-resolution".');
   const next = copy(state);
-  const player = next.players[next.currentPlayer];
-  const from = player.position;
-  player.position += next.chainTotal;
-  addLog(next, `連鎖を確定。合計${next.chainTotal}マス進み、${player.position}マス目へ。`, 'accent');
-  if (checkWinner(next)) return next;
-  exchangeItemsOnCollision(next);
-  return continueAfterMovement(next, from);
+  addLog(next, `連鎖を確定。合計${next.chainTotal}マスを1マスずつ進む。`, 'accent');
+  return startMovement(next, next.chainTotal, { tone: 'accent' });
 }
 
 export function takeRankBonus(state) {
@@ -232,11 +258,8 @@ export function takeRankBonus(state) {
   const player = next.players[next.currentPlayer];
   const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
   if (player.position >= opponent.position) throw new Error('The rank bonus is only available to the trailing player.');
-  const from = player.position;
-  player.position += 1;
-  addLog(next, `${player.name}が順位ボーナスを選び、1マス進んだ。`, 'accent');
-  if (checkWinner(next)) return next;
-  return continueAfterMovement(next, from, false);
+  addLog(next, `${player.name}が順位ボーナスを選択。`, 'accent');
+  return startMovement(next, 1, { kind: 'rank-bonus', exchangeOnComplete: false, allowRankBonus: false, tone: 'accent' });
 }
 
 export function skipRankBonus(state) {
@@ -257,6 +280,7 @@ export function endTurn(state) {
   next.turn += 1;
   next.phase = 'awaiting-roll';
   next.pendingRoll = null;
+  next.pendingMovement = null;
   next.pendingItemLevel = null;
   next.pendingAfterItemPhase = null;
   next.chainStreak = 0;

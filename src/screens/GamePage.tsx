@@ -226,6 +226,17 @@ function ActionPanel({ game }: { game: GameState }) {
         </>
       )}
 
+      {game.phase === 'moving' && (
+        <div className="moving-panel" role="status" aria-live="polite">
+          <span>MOVING</span>
+          <h2>1マスずつ移動中</h2>
+          <p><strong>残り {game.pendingMovement?.remaining ?? 0}マス</strong> — アイテムマスでは一度止まります。</p>
+          <div className="movement-meter" aria-hidden="true">
+            <i style={{ width: `${game.pendingMovement ? ((game.pendingMovement.total - game.pendingMovement.remaining) / game.pendingMovement.total) * 100 : 100}%` }} />
+          </div>
+        </div>
+      )}
+
       {game.phase === 'choose-item' && (
         <>
           <h2>{game.pendingItemLevel === 'super' ? 'SUPERアイテムを選ぶ' : 'アイテムを選ぶ'}</h2>
