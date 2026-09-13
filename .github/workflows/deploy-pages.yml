@@ -1,8 +1,7 @@
 name: Deploy Minami Survivor to GitHub Pages
 
+# GitHub Pages への自動公開は止めた（公開先は MurikoNote）。必要なときだけ Actions の画面から手動で実行する。
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -2,7 +2,7 @@
 
 React、TanStack Router、TanStack Storeを基盤にした第二版です。1台の端末で2人、またはオンラインで2人が対戦できます。
 
-公開版: https://kouheyhey.github.io/minami-survivor/
+公開版: https://murinote.com/games/play/minami-survivor （MurikoNote に同梱）
 
 ## 起動
 
@@ -55,4 +55,16 @@ node scripts/sync-rules.mjs
 supabase functions deploy game-rooms --use-api
 ```
 
-`main`ブランチのゲーム関連ファイルが更新されると、GitHub Actionsがテスト・ビルド後にGitHub Pagesへ自動公開します。
+## 公開
+
+公開先は MurikoNote（https://murinote.com 、リポジトリ MurikoHub、Netlify）です。GitHub Pages への自動公開は止めています（`.github/workflows/deploy-pages.yml` は手動実行のみ）。
+
+```sh
+# このリポジトリで、MurikoHub の同梱フォルダへビルドする
+npx vite build --base=./ --outDir ../../03_アプリ開発/MurikoHub/public/games/MinamiSurvivor --emptyOutDir
+
+# MurikoHub でコミット・push したあと、本番へデプロイする
+cd ../../03_アプリ開発/MurikoHub
+npm run build
+npx netlify-cli deploy --prod --dir=dist --no-build
+```

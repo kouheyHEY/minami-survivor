@@ -111,8 +111,11 @@ test('合計3の強化と同マス交換は確認ボタンで任意選択する'
   assert.match(rules, /交換するか選べます/);
 });
 
-test('GitHub Actionsがゲームだけを検証・ビルドしてPagesへ公開する', async () => {
+test('GitHub Pagesへの公開は手動で実行したときだけ動く', async () => {
   const workflow = await read('../.github/workflows/deploy-pages.yml');
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /^\s*push:/m);
 
   assert.match(workflow, /run:\s*npm ci/);
   assert.match(workflow, /run:\s*npm test/);
