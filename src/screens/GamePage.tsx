@@ -448,6 +448,82 @@ function ChainResult({ game }: { game: GameState }) {
     );
 }
 
+// スマホで押しやすいよう、まず大きなカードをタップして効果を確かめ、下のボタンで決める。
+function ItemPicker({
+    current,
+    level,
+    canKeep,
+}: {
+    current: Player["item"];
+    level: "normal" | "super";
+    canKeep: boolean;
+}) {
+    const [selected, setSelected] = useState<ItemType | null>(null);
+    const selectedMeta = selected ? ITEM_META[selected] : null;
+
+    return (
+        <div className="item-picker">
+            <h2>
+                {current
+                    ? "アイテムを交換する？"
+                    : level === "super"
+                      ? "SUPERアイテムを選ぶ"
+                      : "アイテムを選ぶ"}
+            </h2>
+            <p>
+                {current
+                    ? `現在は「${ITEM_META[current.type].label}」を所持中。保持することもできます。`
+                    : "持てるアイテムは1つだけ。タップして効果を見てから決めよう。"}
+            </p>
+            <div className="item-choices" role="radiogroup" aria-label="選べるアイテム">
+                {(
+                    Object.entries(ITEM_META) as Array<
+                        [ItemType, (typeof ITEM_META)[ItemType]]
+                    >
+                ).map(([type, meta]) => (
+                    <button
+                        key={type}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected === type}
+                        className={`item-choice ${selected === type ? "is-selected" : ""}`}
+                        onClick={() => setSelected(type)}
+                    >
+                        <b aria-hidden="true">{meta.icon}</b>
+                        <strong>{meta.label}</strong>
+                        <small>{meta.short}</small>
+                    </button>
+                ))}
+            </div>
+            <div className="item-picker-detail" aria-live="polite">
+                {selected ? (
+                    <ItemDescription type={selected} />
+                ) : (
+                    <p className="item-picker-hint">
+                        アイテムをタップすると、ここに効果が出ます。
+                    </p>
+                )}
+            </div>
+            <div className="action-buttons">
+                <button
+                    className="primary-button"
+                    disabled={!selected}
+                    onClick={() => selected && gameActions.chooseItem(selected)}
+                >
+                    {selectedMeta
+                        ? `${selectedMeta.label}${current ? "に交換" : "にする"}`
+                        : "アイテムを選んでください"}
+                </button>
+                {canKeep && current && (
+                    <button className="ghost-button" onClick={gameActions.keepItem}>
+                        今の{ITEM_META[current.type].label}を保持
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function ActionPanel({
     game,
     canControl,
@@ -631,54 +707,12 @@ function ActionPanel({
             )}
 
             {game.phase === "choose-item" && (
-                <>
-                    <h2>
-                        {item
-                            ? "アイテムを交換する？"
-                            : game.pendingItemLevel === "super"
-                              ? "SUPERアイテムを選ぶ"
-                              : "アイテムを選ぶ"}
-                    </h2>
-                    <p>
-                        {item
-                            ? `現在は「${ITEM_META[item.type].label}」を所持中。保持することもできます。`
-                            : "持てるアイテムは1つだけ。ここで決めよう。"}
-                    </p>
-                    {item && game.pendingItemSource === "space" && (
-                        <button
-                            className="ghost-button keep-item-button"
-                            onClick={gameActions.keepItem}
-                        >
-                            今の{ITEM_META[item.type].label}を保持する
-                        </button>
-                    )}
-                    <div className="item-choices">
-                        {(
-                            Object.entries(ITEM_META) as Array<
-                                [ItemType, (typeof ITEM_META)[ItemType]]
-                            >
-                            ).map(([type, meta]) => (
-                                <details className="item-choice" key={type}>
-                                    <summary>
-                                        <b>{meta.icon}</b>
-                                        <span>
-                                            <strong>{item ? `${meta.label}へ交換` : meta.label}</strong>
-                                            <small>タップして説明</small>
-                                        </span>
-                                    </summary>
-                                    <div className="item-choice-popover">
-                                        <ItemDescription type={type} />
-                                        <button
-                                            className="choose-item-button"
-                                            onClick={() => gameActions.chooseItem(type)}
-                                        >
-                                            このアイテムを選ぶ
-                                        </button>
-                                    </div>
-                                </details>
-                            ))}
-                    </div>
-                </>
+                <ItemPicker
+                    key={`${game.turn}-${player.position}`}
+                    current={item}
+                    level={game.pendingItemLevel ?? "normal"}
+                    canKeep={item !== null && game.pendingItemSource === "space"}
+                />
             )}
 
             {game.phase === "upgrade-item-choice" && item && (

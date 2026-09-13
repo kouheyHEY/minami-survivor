@@ -70,21 +70,24 @@ test('手番終了と連鎖確定は明示ボタンで行い、全イベント�
   assert.match(styles, /prefers-reduced-motion[\s\S]*animation:\s*none\s*!important/);
 });
 
-test('アイテムはタップ・ホバー・フォーカスで説明を確認してから選べる', async () => {
+test('アイテムはカードをタップして効果を確かめ、大きなボタンで決める', async () => {
   const [screen, styles] = await Promise.all([
     read('../src/screens/GamePage.tsx'),
     read('../src/styles.css'),
   ]);
 
   assert.match(screen, /function ItemDescription/);
+  assert.match(screen, /function ItemPicker/);
   assert.match(screen, /className="item-inspector"/);
-  assert.match(screen, /className="item-choice"/);
-  assert.match(screen, /このアイテムを選ぶ/);
+  assert.match(screen, /role="radio"/);
+  assert.match(screen, /アイテムを選んでください/);
   assert.match(screen, /通常：/);
   assert.match(screen, /SUPER：/);
+  assert.doesNotMatch(screen, /item-choice-popover/);
   assert.match(styles, /\.item-inspector:hover\s+\.item-description/);
-  assert.match(styles, /\.item-choice:hover\s+\.item-choice-popover/);
-  assert.match(styles, /:focus-within/);
+  assert.match(styles, /\.item-choice\s*{[^}]*min-height:\s*76px/);
+  assert.match(styles, /\.item-choice\.is-selected/);
+  assert.match(styles, /\.item-picker-detail\s*{[^}]*min-height/);
 });
 
 test('合計3の強化と同マス交換は確認ボタンで任意選択する', async () => {
