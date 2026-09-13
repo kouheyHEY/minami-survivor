@@ -1,4 +1,5 @@
 import { useSelector } from "@tanstack/react-store";
+import { useEffect, useState } from "react";
 import {
     GOAL,
     ITEM_LABELS,
@@ -9,6 +10,7 @@ import {
     type Player,
 } from "../game/engine.js";
 import { gameActions, gameStore } from "../game/store.js";
+import { inviteUrl } from "../online/roomClient.js";
 
 const ITEM_META: Record<
     ItemType,
@@ -48,12 +50,99 @@ function ItemDescription({ type }: { type: ItemType }) {
     );
 }
 
+function OnlineSetup() {
+    const name = useSelector(gameStore, (state) => state.onlineName);
+    const joinCode = useSelector(gameStore, (state) => state.joinCode);
+    const busy = useSelector(gameStore, (state) => state.busy);
+    const error = useSelector(gameStore, (state) => state.error);
+    const invited = joinCode.length === 6;
+
+    return (
+        <div className={`online-setup ${invited ? "is-invited" : ""}`}>
+            <label className="player-input player-1">
+                <span>
+                    <i />
+                    あなたの名前
+                </span>
+                <input
+                    value={name}
+                    maxLength={16}
+                    placeholder="相手に表示されます"
+                    onChange={(event) =>
+                        gameActions.setOnlineName(event.target.value)
+                    }
+                    aria-label="あなたの名前"
+                />
+            </label>
+            <button
+                className={`${invited ? "ghost-button" : "primary-button"} start-button`}
+                onClick={() => void gameActions.createRoom()}
+                disabled={busy}
+            >
+                部屋をつくる <span aria-hidden="true">→</span>
+            </button>
+            <div className="join-block">
+                <p className="online-divider">部屋コードをもらったら</p>
+                <form
+                    className="join-form"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void gameActions.joinRoom();
+                    }}
+                >
+                    <input
+                        value={joinCode}
+                        onChange={(event) =>
+                            gameActions.setJoinCode(event.target.value)
+                        }
+                        placeholder="6文字のコード"
+                        aria-label="部屋コード"
+                        autoCapitalize="characters"
+                        autoComplete="off"
+                        spellCheck={false}
+                    />
+                    <button
+                        className={invited ? "primary-button" : "ghost-button"}
+                        disabled={busy || !invited}
+                    >
+                        参加する
+                    </button>
+                </form>
+            </div>
+            {error && (
+                <p className="error-message" role="alert">
+                    {error}
+                </p>
+            )}
+        </div>
+    );
+}
+
 function SetupScreen() {
     const names = useSelector(gameStore, (state) => state.names);
+    const mode = useSelector(gameStore, (state) => state.mode);
 
     return (
         <main className="setup-page">
             <section className="hero-card">
+                <div className="mode-switch" role="group" aria-label="遊び方">
+                    <button
+                        aria-pressed={mode === "local"}
+                        onClick={() => gameActions.setMode("local")}
+                    >
+                        この端末で2人
+                    </button>
+                    <button
+                        aria-pressed={mode === "online"}
+                        onClick={() => gameActions.setMode("online")}
+                    >
+                        オンライン対戦
+                    </button>
+                </div>
+                {mode === "online" ? (
+                    <OnlineSetup />
+                ) : (
+                <>
                 <div className="player-inputs">
                     {names.map((name, index) => (
                         <label
@@ -86,6 +175,8 @@ function SetupScreen() {
                 >
                     ゲームをはじめる <span aria-hidden="true">→</span>
                 </button>
+                </>
+                )}
             </section>
 
             <aside className="setup-aside" aria-label="ゲームのポイント">
@@ -111,6 +202,52 @@ function SetupScreen() {
                     </div>
                 </div>
             </aside>
+        </main>
+    );
+}
+
+function WaitingScreen() {
+    const room = useSelector(gameStore, (state) => state.online?.room);
+    const [copied, setCopied] = useState(false);
+    if (!room) return null;
+
+    const share = async () => {
+        const url = inviteUrl(room.code);
+        try {
+            if (typeof navigator.share === "function") {
+                await navigator.share({
+                    title: "みなみサバイバー",
+                    text: `部屋コード ${room.code} で一緒に遊ぼう`,
+                    url,
+                });
+            } else {
+                await navigator.clipboard.writeText(url);
+                setCopied(true);
+            }
+        } catch {
+            // 共有をキャンセルしたときは何もしない
+        }
+    };
+
+    return (
+        <main className="waiting-page">
+            <section className="waiting-card" aria-live="polite">
+                <span className="section-index">ONLINE ROOM</span>
+                <h1>相手を待っています</h1>
+                <p>部屋コードか招待リンクを相手に送ってください。相手が参加すると始まります。</p>
+                <strong className="room-code">{room.code}</strong>
+                <div className="action-buttons">
+                    <button
+                        className="primary-button"
+                        onClick={() => void share()}
+                    >
+                        {copied ? "リンクをコピーしました" : "招待リンクを送る"}
+                    </button>
+                    <button className="ghost-button" onClick={gameActions.reset}>
+                        部屋を閉じる
+                    </button>
+                </div>
+            </section>
         </main>
     );
 }
@@ -300,7 +437,17 @@ function ChainResult({ game }: { game: GameState }) {
     );
 }
 
-function ActionPanel({ game }: { game: GameState }) {
+function ActionPanel({
+    game,
+    canControl,
+    online,
+    busy,
+}: {
+    game: GameState;
+    canControl: boolean;
+    online: boolean;
+    busy: boolean;
+}) {
     const player = game.players[game.currentPlayer];
     const item = player.item;
     const roll = game.pendingRoll;
@@ -315,6 +462,7 @@ function ActionPanel({ game }: { game: GameState }) {
                 <button
                     className="primary-button"
                     onClick={gameActions.playAgain}
+                    disabled={busy}
                 >
                     もう一度あそぶ
                 </button>
@@ -322,8 +470,27 @@ function ActionPanel({ game }: { game: GameState }) {
         );
     }
 
+    if (!canControl) {
+        return (
+            <section className="action-panel">
+                <div className="action-kicker">
+                    TURN {game.turn} — {player.name}
+                </div>
+                <div className="rival-turn-panel" role="status" aria-live="polite">
+                    <span>RIVAL TURN</span>
+                    <h2>{player.name}の番です</h2>
+                    <p>{game.log[0]?.message}</p>
+                    <ChainResult game={game} />
+                </div>
+            </section>
+        );
+    }
+
     return (
-        <section className="action-panel">
+        <section
+            className={`action-panel ${busy ? "is-busy" : ""}`}
+            aria-busy={busy}
+        >
             <div className="action-kicker">
                 TURN {game.turn} — {player.name}
             </div>
@@ -592,7 +759,11 @@ function ActionPanel({ game }: { game: GameState }) {
                 <div className="turn-complete-panel">
                     <span>ACTION COMPLETE</span>
                     <h2>{player.position}マス目で行動完了</h2>
-                    <p>結果を確認してから、次のプレイヤーへ渡してください。</p>
+                    <p>
+                        {online
+                            ? "結果を確認したら、相手の番へ進めてください。"
+                            : "結果を確認してから、次のプレイヤーへ渡してください。"}
+                    </p>
                     <div className="action-buttons">
                         <button
                             className="primary-button end-turn-button"
@@ -607,40 +778,124 @@ function ActionPanel({ game }: { game: GameState }) {
     );
 }
 
+const MOVEMENT_STEP_MS = 160;
+
+const prefersReducedMotion = () =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// オンラインではサーバーが移動先まで一度に確定させるので、駒は画面側で1マスずつ追いかける。
+function useDisplayedPositions(targets: number[], animate: boolean) {
+    const [shown, setShown] = useState(targets);
+    const targetKey = targets.join(",");
+    const shownKey = shown.join(",");
+
+    useEffect(() => {
+        const settled = targets.map((target, index) =>
+            !animate || shown[index] > target ? target : shown[index],
+        );
+        if (settled.join(",") !== shownKey) {
+            setShown(settled);
+            return;
+        }
+        if (settled.every((position, index) => position === targets[index])) return;
+        const timer = setTimeout(() => {
+            setShown((current) =>
+                current.map((position, index) =>
+                    position < targets[index] ? position + 1 : position,
+                ),
+            );
+        }, MOVEMENT_STEP_MS);
+        return () => clearTimeout(timer);
+    }, [targetKey, shownKey, animate]);
+
+    return shown;
+}
+
 function GameScreen() {
     const game = useSelector(gameStore, (state) => state.game);
-    const error = useSelector(gameStore, (state) => state.error);
     if (!game) return null;
+    return <MatchScreen game={game} />;
+}
+
+function MatchScreen({ game }: { game: GameState }) {
+    const online = useSelector(gameStore, (state) => state.online);
+    const busy = useSelector(gameStore, (state) => state.busy);
+    const error = useSelector(gameStore, (state) => state.error);
+    const selfIndex = online?.room.seat === 1 ? 1 : 0;
+    const rivalIndex = selfIndex === 0 ? 1 : 0;
+    const shown = useDisplayedPositions(
+        game.players.map((player) => player.position),
+        online !== null && !prefersReducedMotion(),
+    );
+    const remaining = shown.reduce(
+        (sum, position, index) =>
+            sum + Math.max(0, game.players[index].position - position),
+        0,
+    );
+    const players = game.players.map((player, index) => ({
+        ...player,
+        position: shown[index],
+    })) as GameState["players"];
+    const canControl = online === null || game.currentPlayer === selfIndex;
+
+    const leave = () => {
+        if (online && !window.confirm("部屋を出ると、この対戦には戻れません。部屋を出ますか？")) return;
+        gameActions.reset();
+    };
 
     return (
         <main className="game-page">
             <EventStage events={game.log} />
             <div className="game-toolbar">
                 <div>
-                    <span>LOCAL MATCH</span>
+                    <span>{online ? `ONLINE · ROOM ${online.room.code}` : "LOCAL MATCH"}</span>
                     <strong>FIRST TO 73</strong>
                 </div>
-                <button onClick={gameActions.reset}>名前入力へ戻る</button>
+                <button onClick={leave}>
+                    {online ? "部屋を出る" : "名前入力へ戻る"}
+                </button>
             </div>
+            {online && error && (
+                <p className="error-message online-error" role="alert">
+                    {error}
+                </p>
+            )}
             <div className="match-layout">
                 <div className="opponent-row player-strip">
                     <PlayerCard
-                        player={game.players[1]}
-                        index={1}
+                        player={players[rivalIndex]}
+                        index={rivalIndex}
                         perspective="opponent"
-                        active={game.status === "playing" && game.currentPlayer === 1}
+                        active={game.status === "playing" && game.currentPlayer === rivalIndex}
                     />
                 </div>
-                <Board players={game.players} />
+                <Board players={players} />
                 <div className="self-row player-strip">
                     <PlayerCard
-                        player={game.players[0]}
-                        index={0}
+                        player={players[selfIndex]}
+                        index={selfIndex}
                         perspective="self"
-                        active={game.status === "playing" && game.currentPlayer === 0}
+                        active={game.status === "playing" && game.currentPlayer === selfIndex}
                     />
                 </div>
-                <ActionPanel game={game} />
+                {remaining > 0 ? (
+                    <section className="action-panel">
+                        <div className="moving-panel" role="status" aria-live="polite">
+                            <span>MOVING</span>
+                            <h2>1マスずつ移動中</h2>
+                            <p>
+                                <strong>残り {remaining}マス</strong>
+                            </p>
+                        </div>
+                    </section>
+                ) : (
+                    <ActionPanel
+                        game={game}
+                        canControl={canControl}
+                        online={online !== null}
+                        busy={busy}
+                    />
+                )}
                 <details className="log-panel">
                     <summary>
                         <span className="section-index">02</span>
@@ -667,5 +922,12 @@ function GameScreen() {
 
 export function GamePage() {
     const screen = useSelector(gameStore, (state) => state.screen);
+
+    // 前に入っていた部屋があれば、読み込み直しても同じ席へ戻る。
+    useEffect(() => {
+        void gameActions.resumeRoom();
+    }, []);
+
+    if (screen === "waiting") return <WaitingScreen />;
     return screen === "setup" ? <SetupScreen /> : <GameScreen />;
 }

@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+
+test('オンライン対戦は共通の game-server へ操作を送り、端末ではサイコロを振らない', async () => {
+  const [store, client] = await Promise.all([
+    read('../src/game/store.ts'),
+    read('../src/online/roomClient.ts'),
+  ]);
+
+  assert.match(client, /functions\/v1\/game-rooms/);
+  assert.match(client, /GAME_KEY = 'minami-survivor'/);
+  assert.match(client, /'room-updated'/);
+  assert.match(store, /if \(isOnline\(\)\) return void sendAction\(\{ type: 'roll' \}\)/);
+  assert.match(store, /if \(isOnline\(\)\) return void sendAction\(\{ type: 'challenge' \}\)/);
+  assert.match(store, /OFFLINE_POLL_MS/);
+});
+
+test('部屋をつくる・参加する・相手を待つ・相手の番を画面で分けて示す', async () => {
+  const screen = await read('../src/screens/GamePage.tsx');
+
+  assert.match(screen, /オンライン対戦/);
+  assert.match(screen, /部屋をつくる/);
+  assert.match(screen, /参加する/);
+  assert.match(screen, /招待リンクを送る/);
+  assert.match(screen, /相手を待っています/);
+  assert.match(screen, /RIVAL TURN/);
+  assert.match(screen, /function useDisplayedPositions/);
+});
