@@ -148,6 +148,7 @@ button { cursor: pointer; }
 .end-turn-button:hover { box-shadow: 0 9px 0 #923310; }
 .end-turn-button:active { box-shadow: 0 2px 0 #923310; }
 .item-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 8px; }
+.keep-item-button { width: 100%; min-height: 38px; margin-top: 8px; }
 .item-choices button { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: white; padding: 7px 4px; text-align: center; display: grid; gap: 2px; justify-items: center; }
 .item-choices button:hover { border-color: var(--orange); transform: translateY(-2px); }
 .item-choices b { color: var(--orange); font-size: 22px; }

@@ -20,6 +20,7 @@ function prepareTurnEnd(state) {
   state.pendingRoll = null;
   state.pendingMovement = null;
   state.pendingItemLevel = null;
+  state.pendingItemSource = null;
   state.pendingAfterItemPhase = null;
   return state;
 }
@@ -49,6 +50,7 @@ function phaseAfterMainMovement(state) {
 function offerItem(state, itemSpace, afterPhase) {
   state.phase = 'choose-item';
   state.pendingItemLevel = itemSpace === 45 ? 'super' : 'normal';
+  state.pendingItemSource = 'space';
   state.pendingAfterItemPhase = afterPhase;
   addLog(state, `${itemSpace}マス目のアイテムマスに到着！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`, 'accent');
   return state;
@@ -89,6 +91,7 @@ function finishMovement(state) {
     if (player.item === null) {
       state.phase = 'choose-item';
       state.pendingItemLevel = 'normal';
+      state.pendingItemSource = 'sum-three';
       state.pendingAfterItemPhase = movement.allowRankBonus ? phaseAfterMainMovement(state) : 'turn-complete';
       addLog(state, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
       return state;
@@ -103,7 +106,7 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2']) {
   const normalizedNames = [0, 1].map((index) => String(names[index] || '').trim() || `プレイヤー${index + 1}`);
   return {
     status: 'playing', phase: 'awaiting-roll', currentPlayer: 0, winner: null, turn: 1,
-    pendingRoll: null, pendingMovement: null, pendingItemLevel: null, pendingAfterItemPhase: null,
+    pendingRoll: null, pendingMovement: null, pendingItemLevel: null, pendingItemSource: null, pendingAfterItemPhase: null,
     chainStreak: 0, chainTotal: 0, lastChainResult: null, nextLogId: 3,
     players: [
       { id: 'player-1', name: normalizedNames[0], position: 0, item: null, turnsTaken: 0, openingRerollAvailable: false },
@@ -195,7 +198,7 @@ export function advanceMovement(state) {
     player.position += 1;
     movement.remaining -= 1;
     if (checkWinner(next)) return next;
-    if (player.item === null && ITEM_SPACES.includes(player.position)) {
+    if (ITEM_SPACES.includes(player.position)) {
       return offerItem(next, player.position, 'moving');
     }
   }
@@ -208,22 +211,40 @@ export function chooseItem(state, itemType) {
   if (!itemTypes.includes(itemType)) throw new Error('Unknown item type.');
   const next = copy(state);
   const player = next.players[next.currentPlayer];
-  if (player.item !== null) throw new Error('The player already has an item.');
+  if (player.item !== null && next.pendingItemSource !== 'space') throw new Error('The player already has an item.');
+  const previousItem = player.item;
   player.item = { type: itemType, level: next.pendingItemLevel || 'normal' };
-  addLog(next, `${player.name}が${player.item.level === 'super' ? 'SUPER ' : ''}${ITEM_LABELS[itemType]}を獲得。`, 'accent');
-  const nextPhase = next.pendingAfterItemPhase || 'turn-complete';
-  next.pendingItemLevel = null;
-  next.pendingAfterItemPhase = null;
+  addLog(next, previousItem
+    ? `${player.name}が${ITEM_LABELS[previousItem.type]}を手放し、${player.item.level === 'super' ? 'SUPER ' : ''}${ITEM_LABELS[itemType]}へ交換。`
+    : `${player.name}が${player.item.level === 'super' ? 'SUPER ' : ''}${ITEM_LABELS[itemType]}を獲得。`, 'accent');
+  return completeItemChoice(next);
+}
+
+function completeItemChoice(state) {
+  const player = state.players[state.currentPlayer];
+  const nextPhase = state.pendingAfterItemPhase || 'turn-complete';
+  state.pendingItemLevel = null;
+  state.pendingItemSource = null;
+  state.pendingAfterItemPhase = null;
   if (nextPhase === 'moving') {
-    next.phase = 'moving';
-    return next;
+    state.phase = 'moving';
+    return state;
   }
   if (nextPhase === 'rank-bonus-choice') {
-    next.phase = nextPhase;
-    addLog(next, `${player.name}は現在2位。順位ボーナスで1マス追加できる。`, 'accent');
-    return next;
+    state.phase = nextPhase;
+    addLog(state, `${player.name}は現在2位。順位ボーナスで1マス追加できる。`, 'accent');
+    return state;
   }
-  return prepareTurnEnd(next);
+  return prepareTurnEnd(state);
+}
+
+export function keepItem(state) {
+  assertPhase(state, 'choose-item');
+  const next = copy(state);
+  const player = next.players[next.currentPlayer];
+  if (next.pendingItemSource !== 'space' || player.item === null) throw new Error('There is no current item to keep.');
+  addLog(next, `${player.name}は${ITEM_LABELS[player.item.type]}を保持。`, 'accent');
+  return completeItemChoice(next);
 }
 
 export function challengeChain(state, dice) {
@@ -282,6 +303,7 @@ export function endTurn(state) {
   next.pendingRoll = null;
   next.pendingMovement = null;
   next.pendingItemLevel = null;
+  next.pendingItemSource = null;
   next.pendingAfterItemPhase = null;
   next.chainStreak = 0;
   next.chainTotal = 0;

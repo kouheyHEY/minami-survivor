@@ -9,6 +9,7 @@ import {
   confirmRoll,
   createGame,
   endTurn,
+  keepItem,
   reroll,
   resolveChain,
   roll,
@@ -55,6 +56,33 @@ test('移動中にアイテムマスへ着いた瞬間に選択し、残り歩�
   state = advanceAll(state);
   assert.equal(state.players[0].position, 12);
   assert.equal(state.phase, 'turn-complete');
+});
+
+test('アイテム所持中でもアイテムマスで停止し、現在のアイテムを保持できる', () => {
+  let state = createGame();
+  state.currentPlayer = 1;
+  state.players[1].position = 6;
+  state = confirmRoll(roll(state, dice(3, 3)));
+  state = advanceAll(state);
+
+  assert.equal(state.players[1].position, 10);
+  assert.equal(state.phase, 'choose-item');
+  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.CHARM, level: 'normal' });
+
+  state = advanceAll(keepItem(state));
+  assert.equal(state.players[1].position, 12);
+  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.CHARM, level: 'normal' });
+});
+
+test('アイテム所持中にアイテムマスで新しいアイテムへ交換できる', () => {
+  let state = createGame();
+  state.currentPlayer = 1;
+  state.players[1].position = 6;
+  state = advanceAll(confirmRoll(roll(state, dice(3, 3))));
+
+  state = advanceAll(chooseItem(state, ITEM_TYPES.TOBACCO));
+  assert.equal(state.players[1].position, 12);
+  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.TOBACCO, level: 'normal' });
 });
 
 test('後手は通常チャームと初手振り直しを持って開始する', () => {
@@ -273,6 +301,7 @@ test('サイコロ移動で同じマスに着地すると所持アイテムを�
   state.players[1].item = { type: ITEM_TYPES.TOBACCO, level: 'super' };
 
   state = advanceAll(confirmRoll(roll(state, dice(1, 3))));
+  state = advanceAll(keepItem(state));
   assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.TOBACCO, level: 'super' });
   assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
 });

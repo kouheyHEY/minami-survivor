@@ -239,12 +239,15 @@ function ActionPanel({ game }: { game: GameState }) {
 
       {game.phase === 'choose-item' && (
         <>
-          <h2>{game.pendingItemLevel === 'super' ? 'SUPERアイテムを選ぶ' : 'アイテムを選ぶ'}</h2>
-          <p>持てるアイテムは1つだけ。ここで決めよう。</p>
+          <h2>{item ? 'アイテムを交換する？' : game.pendingItemLevel === 'super' ? 'SUPERアイテムを選ぶ' : 'アイテムを選ぶ'}</h2>
+          <p>{item ? `現在は「${ITEM_META[item.type].label}」を所持中。保持することもできます。` : '持てるアイテムは1つだけ。ここで決めよう。'}</p>
+          {item && game.pendingItemSource === 'space' && (
+            <button className="ghost-button keep-item-button" onClick={gameActions.keepItem}>今の{ITEM_META[item.type].label}を保持する</button>
+          )}
           <div className="item-choices">
             {(Object.entries(ITEM_META) as Array<[ItemType, (typeof ITEM_META)[ItemType]]>).map(([type, meta]) => (
               <button key={type} onClick={() => gameActions.chooseItem(type)}>
-                <b>{meta.icon}</b><span><strong>{meta.label}</strong><small>{meta.short}</small></span>
+                <b>{meta.icon}</b><span><strong>{item ? `${meta.label}へ交換` : meta.label}</strong><small>{meta.short}</small></span>
               </button>
             ))}
           </div>

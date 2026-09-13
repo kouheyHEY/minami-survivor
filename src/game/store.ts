@@ -6,6 +6,7 @@ import {
   confirmRoll,
   createGame,
   endTurn,
+  keepItem,
   randomDice,
   reroll,
   resolveChain,
@@ -104,6 +105,9 @@ export const gameActions = {
   },
   chooseItem(itemType: ItemType) {
     updateAndSchedule((game) => chooseItem(game, itemType))
+  },
+  keepItem() {
+    updateAndSchedule(keepItem)
   },
   challenge() {
     updateGame((game) => challengeChain(game, randomDice()))

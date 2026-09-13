@@ -35,6 +35,7 @@ export interface GameState {
     allowRankBonus: boolean
   } | null
   pendingItemLevel: ItemLevel | null
+  pendingItemSource: 'space' | 'sum-three' | null
   pendingAfterItemPhase: 'moving' | 'rank-bonus-choice' | 'turn-complete' | null
   chainStreak: number
   chainTotal: number
@@ -62,6 +63,7 @@ export function reroll(state: GameState, dice: DicePair, source: 'opening' | 'ba
 export function confirmRoll(state: GameState, options?: { adjustment?: number; useSuperBadge?: boolean }): GameState
 export function advanceMovement(state: GameState): GameState
 export function chooseItem(state: GameState, itemType: ItemType): GameState
+export function keepItem(state: GameState): GameState
 export function challengeChain(state: GameState, dice: DicePair): GameState
 export function resolveChain(state: GameState): GameState
 export function takeRankBonus(state: GameState): GameState
