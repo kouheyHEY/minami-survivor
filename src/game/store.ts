@@ -1,10 +1,14 @@
 import { createStore } from '@tanstack/react-store'
 import {
+  acceptItemExchange,
+  acceptItemUpgrade,
   advanceMovement,
   challengeChain,
   chooseItem,
   confirmRoll,
   createGame,
+  declineItemExchange,
+  declineItemUpgrade,
   endTurn,
   keepItem,
   randomDice,
@@ -108,6 +112,18 @@ export const gameActions = {
   },
   keepItem() {
     updateAndSchedule(keepItem)
+  },
+  acceptItemUpgrade() {
+    updateAndSchedule(acceptItemUpgrade)
+  },
+  declineItemUpgrade() {
+    updateAndSchedule(declineItemUpgrade)
+  },
+  acceptItemExchange() {
+    updateGame(acceptItemExchange)
+  },
+  declineItemExchange() {
+    updateGame(declineItemExchange)
   },
   challenge() {
     updateGame((game) => challengeChain(game, randomDice()))

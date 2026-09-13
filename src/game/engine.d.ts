@@ -1,6 +1,6 @@
 export type ItemType = 'badge' | 'charm' | 'tobacco'
 export type ItemLevel = 'normal' | 'super'
-export type Phase = 'awaiting-roll' | 'roll-options' | 'moving' | 'choose-item' | 'chain-choice' | 'chain-resolution' | 'rank-bonus-choice' | 'turn-complete' | 'finished'
+export type Phase = 'awaiting-roll' | 'roll-options' | 'moving' | 'choose-item' | 'upgrade-item-choice' | 'item-exchange-choice' | 'chain-choice' | 'chain-resolution' | 'rank-bonus-choice' | 'turn-complete' | 'finished'
 export type LogTone = 'neutral' | 'accent' | 'danger' | 'win'
 export type DicePair = [number, number]
 export type ChainOutcome = 'started' | 'success' | 'completed'
@@ -30,7 +30,6 @@ export interface GameState {
     remaining: number
     total: number
     kind: 'main' | 'rank-bonus'
-    triggerSumThree: boolean
     exchangeOnComplete: boolean
     allowRankBonus: boolean
   } | null
@@ -64,6 +63,10 @@ export function confirmRoll(state: GameState, options?: { adjustment?: number; u
 export function advanceMovement(state: GameState): GameState
 export function chooseItem(state: GameState, itemType: ItemType): GameState
 export function keepItem(state: GameState): GameState
+export function acceptItemUpgrade(state: GameState): GameState
+export function declineItemUpgrade(state: GameState): GameState
+export function acceptItemExchange(state: GameState): GameState
+export function declineItemExchange(state: GameState): GameState
 export function challengeChain(state: GameState, dice: DicePair): GameState
 export function resolveChain(state: GameState): GameState
 export function takeRankBonus(state: GameState): GameState

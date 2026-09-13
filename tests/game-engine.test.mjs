@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 
 import {
   ITEM_TYPES,
+  acceptItemExchange,
+  acceptItemUpgrade,
   advanceMovement,
   challengeChain,
   chooseItem,
   confirmRoll,
   createGame,
+  declineItemExchange,
+  declineItemUpgrade,
   endTurn,
   keepItem,
   reroll,
@@ -180,22 +184,38 @@ test('次の通常ロールを始めると直前の連鎖結果を閉じる', ()
   assert.equal(state.lastChainResult, null);
 });
 
-test('合計3は未所持なら選択取得、所持中ならSUPER化する', () => {
+test('合計3はアイテムを取得してから3マス移動する', () => {
   let state = confirmRoll(roll(createGame(), dice(1, 2)));
-  state = advanceAll(state);
   assert.equal(state.phase, 'choose-item');
+  assert.equal(state.players[0].position, 0);
 
   state = chooseItem(state, ITEM_TYPES.BADGE);
   assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
-  assert.equal(state.currentPlayer, 0);
-  assert.equal(state.phase, 'turn-complete');
+  assert.equal(state.players[0].position, 0);
+  assert.equal(state.phase, 'moving');
 
-  state = endTurn(state);
-  state = confirmRoll(roll(state, dice(1, 2)));
   state = advanceAll(state);
-  assert.deepEqual(state.players[1].item?.level, 'super');
-  assert.equal(state.currentPlayer, 1);
+  assert.equal(state.players[0].position, 3);
   assert.equal(state.phase, 'turn-complete');
+});
+
+test('合計3のSUPER化は移動前に任意で選べる', () => {
+  let state = createGame();
+  state.players[0].item = { type: ITEM_TYPES.BADGE, level: 'normal' };
+  state = confirmRoll(roll(state, dice(1, 2)));
+  assert.equal(state.phase, 'upgrade-item-choice');
+  assert.equal(state.players[0].position, 0);
+
+  const upgraded = acceptItemUpgrade(state);
+  assert.deepEqual(upgraded.players[0].item, { type: ITEM_TYPES.BADGE, level: 'super' });
+  assert.equal(upgraded.players[0].position, 0);
+  assert.equal(upgraded.phase, 'moving');
+  assert.equal(advanceAll(upgraded).players[0].position, 3);
+
+  const unchanged = declineItemUpgrade(state);
+  assert.deepEqual(unchanged.players[0].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+  assert.equal(unchanged.players[0].position, 0);
+  assert.equal(unchanged.phase, 'moving');
 });
 
 test('10と25は通常、45はSUPERのアイテムを取得する', () => {
@@ -293,7 +313,7 @@ test('順位ボーナスでアイテムマスへ進んだ場合も取得でき�
   assert.equal(state.phase, 'turn-complete');
 });
 
-test('サイコロ移動で同じマスに着地すると所持アイテムを交換する', () => {
+test('サイコロ移動で同じマスに着地したとき交換するか任意で選べる', () => {
   let state = createGame();
   state.players[0].position = 8;
   state.players[0].item = { type: ITEM_TYPES.BADGE, level: 'normal' };
@@ -302,8 +322,16 @@ test('サイコロ移動で同じマスに着地すると所持アイテムを�
 
   state = advanceAll(confirmRoll(roll(state, dice(1, 3))));
   state = advanceAll(keepItem(state));
-  assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.TOBACCO, level: 'super' });
-  assert.deepEqual(state.players[1].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+  assert.equal(state.phase, 'item-exchange-choice');
+  assert.deepEqual(state.players[0].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+
+  const exchanged = acceptItemExchange(state);
+  assert.deepEqual(exchanged.players[0].item, { type: ITEM_TYPES.TOBACCO, level: 'super' });
+  assert.deepEqual(exchanged.players[1].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+
+  const kept = declineItemExchange(state);
+  assert.deepEqual(kept.players[0].item, { type: ITEM_TYPES.BADGE, level: 'normal' });
+  assert.deepEqual(kept.players[1].item, { type: ITEM_TYPES.TOBACCO, level: 'super' });
 });
 
 test('通常バッジで振り直し、SUPERバッジで出目を7にできる', () => {

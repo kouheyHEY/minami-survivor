@@ -35,12 +35,12 @@ function checkWinner(state) {
   addLog(state, `${player.name}が${player.position}マス目に到達。勝利！`, 'win');
   return true;
 }
-function exchangeItemsOnCollision(state) {
+function hasItemExchangeChoice(state) {
   const current = state.players[state.currentPlayer];
   const opponent = state.players[state.currentPlayer === 0 ? 1 : 0];
-  if (current.position !== opponent.position) return;
-  [current.item, opponent.item] = [opponent.item, current.item];
-  addLog(state, `同じ${current.position}マス目に着地。アイテムを交換！`, 'accent');
+  if (current.position !== opponent.position) return false;
+  if (current.item === null && opponent.item === null) return false;
+  return current.item?.type !== opponent.item?.type || current.item?.level !== opponent.item?.level;
 }
 function phaseAfterMainMovement(state) {
   const player = state.players[state.currentPlayer];
@@ -68,17 +68,16 @@ function continueAfterMovement(state, allowRankBonus = true) {
 }
 function startMovement(state, spaces, options = {}) {
   const player = state.players[state.currentPlayer];
-  state.phase = 'moving';
+  state.phase = options.defer ? state.phase : 'moving';
   state.pendingRoll = null;
   state.pendingMovement = {
     remaining: spaces,
     total: spaces,
     kind: options.kind || 'main',
-    triggerSumThree: options.triggerSumThree || false,
     exchangeOnComplete: options.exchangeOnComplete ?? true,
     allowRankBonus: options.allowRankBonus ?? true,
   };
-  addLog(state, `${player.name}が${spaces}マスの移動を開始。`, options.tone || 'neutral');
+  if (!options.defer) addLog(state, `${player.name}が${spaces}マスの移動を開始。`, options.tone || 'neutral');
   return state;
 }
 function finishMovement(state) {
@@ -86,18 +85,10 @@ function finishMovement(state) {
   const player = state.players[state.currentPlayer];
   state.pendingMovement = null;
   addLog(state, `${player.name}が${player.position}マス目に到着。`, movement.kind === 'main' ? 'neutral' : 'accent');
-  if (movement.exchangeOnComplete) exchangeItemsOnCollision(state);
-  if (movement.triggerSumThree) {
-    if (player.item === null) {
-      state.phase = 'choose-item';
-      state.pendingItemLevel = 'normal';
-      state.pendingItemSource = 'sum-three';
-      state.pendingAfterItemPhase = movement.allowRankBonus ? phaseAfterMainMovement(state) : 'turn-complete';
-      addLog(state, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
-      return state;
-    }
-    player.item.level = 'super';
-    addLog(state, `合計3！ ${ITEM_LABELS[player.item.type]}がSUPERになった。`, 'accent');
+  if (movement.exchangeOnComplete && hasItemExchangeChoice(state)) {
+    state.phase = 'item-exchange-choice';
+    addLog(state, `同じ${player.position}マス目に着地。アイテムを交換するか選ぼう。`, 'accent');
+    return state;
   }
   return continueAfterMovement(state, movement.allowRankBonus);
 }
@@ -183,7 +174,23 @@ export function confirmRoll(state, options = {}) {
     return next;
   }
   if (total === 3) {
-    return startMovement(next, 3, { triggerSumThree: true, tone: 'accent' });
+    startMovement(next, 3, { defer: true, tone: 'accent' });
+    if (player.item === null) {
+      next.phase = 'choose-item';
+      next.pendingItemLevel = 'normal';
+      next.pendingItemSource = 'sum-three';
+      next.pendingAfterItemPhase = 'moving';
+      addLog(next, '合計3！ アイテムを選んでから3マス進もう。', 'accent');
+      return next;
+    }
+    if (player.item.level === 'normal') {
+      next.phase = 'upgrade-item-choice';
+      addLog(next, `合計3！ ${ITEM_LABELS[player.item.type]}をSUPER化するか選ぼう。`, 'accent');
+      return next;
+    }
+    next.phase = 'moving';
+    addLog(next, `合計3！ アイテムはすでにSUPER。3マスの移動を開始。`, 'accent');
+    return next;
   }
   return startMovement(next, total);
 }
@@ -223,11 +230,13 @@ export function chooseItem(state, itemType) {
 function completeItemChoice(state) {
   const player = state.players[state.currentPlayer];
   const nextPhase = state.pendingAfterItemPhase || 'turn-complete';
+  const itemSource = state.pendingItemSource;
   state.pendingItemLevel = null;
   state.pendingItemSource = null;
   state.pendingAfterItemPhase = null;
   if (nextPhase === 'moving') {
     state.phase = 'moving';
+    if (itemSource === 'sum-three') addLog(state, `${player.name}がアイテムを選択。3マスの移動を開始。`, 'accent');
     return state;
   }
   if (nextPhase === 'rank-bonus-choice') {
@@ -246,6 +255,42 @@ export function keepItem(state) {
   addLog(next, `${player.name}は${ITEM_LABELS[player.item.type]}を保持。`, 'accent');
   return completeItemChoice(next);
 }
+
+function resolveItemUpgrade(state, upgrade) {
+  assertPhase(state, 'upgrade-item-choice');
+  const next = copy(state);
+  const player = next.players[next.currentPlayer];
+  if (player.item === null || player.item.level !== 'normal') throw new Error('A normal item is required.');
+  if (upgrade) {
+    player.item.level = 'super';
+    addLog(next, `${player.name}が${ITEM_LABELS[player.item.type]}をSUPER化！ 3マスの移動を開始。`, 'accent');
+  } else {
+    addLog(next, `${player.name}はSUPER化せず、3マスの移動を開始。`);
+  }
+  next.phase = 'moving';
+  return next;
+}
+
+export const acceptItemUpgrade = (state) => resolveItemUpgrade(state, true);
+export const declineItemUpgrade = (state) => resolveItemUpgrade(state, false);
+
+function resolveItemExchange(state, exchange) {
+  assertPhase(state, 'item-exchange-choice');
+  const next = copy(state);
+  const current = next.players[next.currentPlayer];
+  const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
+  if (!hasItemExchangeChoice(next)) throw new Error('There is no item exchange to resolve.');
+  if (exchange) {
+    [current.item, opponent.item] = [opponent.item, current.item];
+    addLog(next, `${current.name}がアイテム交換を選択。`, 'accent');
+  } else {
+    addLog(next, `${current.name}はアイテムを交換しなかった。`);
+  }
+  return continueAfterMovement(next, true);
+}
+
+export const acceptItemExchange = (state) => resolveItemExchange(state, true);
+export const declineItemExchange = (state) => resolveItemExchange(state, false);
 
 export function challengeChain(state, dice) {
   assertPhase(state, 'chain-choice');
