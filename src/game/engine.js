@@ -99,6 +99,7 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2']) {
     status: 'playing', phase: 'awaiting-roll', currentPlayer: 0, winner: null, turn: 1,
     pendingRoll: null, pendingMovement: null, pendingItemLevel: null, pendingItemSource: null, pendingAfterItemPhase: null,
     chainStreak: 0, chainTotal: 0, lastChainResult: null, nextLogId: 3,
+    firstPlayer: 0, orderRolls: [null, null], orderWinner: null,
     players: [
       { id: 'player-1', name: normalizedNames[0], position: 0, item: null, turnsTaken: 0, openingRerollAvailable: false },
       { id: 'player-2', name: normalizedNames[1], position: 0, item: { type: ITEM_TYPES.CHARM, level: 'normal' }, turnsTaken: 0, openingRerollAvailable: true },
@@ -108,6 +109,60 @@ export function createGame(names = ['プレイヤー1', 'プレイヤー2']) {
       { id: 1, message: `${normalizedNames[0]}の手番からスタート。`, tone: 'neutral' },
     ],
   };
+}
+
+// 先手・後手をサイコロで決めるところから始める対戦。
+export function createOrderGame(names) {
+  const state = createGame(names);
+  state.phase = 'order-roll';
+  for (const player of state.players) {
+    player.item = null;
+    player.openingRerollAvailable = false;
+  }
+  state.log = [];
+  state.nextLogId = 1;
+  addLog(state, 'サイコロを振って先手・後手を決めよう。目が大きい人が選べる。');
+  return state;
+}
+
+export function rollForOrder(state, playerIndex, dice) {
+  assertPhase(state, 'order-roll');
+  validateDice(dice);
+  if (playerIndex !== 0 && playerIndex !== 1) throw new Error('Unknown player.');
+  if (state.orderRolls[playerIndex] !== null) throw new Error('The player has already rolled for turn order.');
+  const next = copy(state);
+  next.orderRolls[playerIndex] = [...dice];
+  addLog(next, `${next.players[playerIndex].name}の出目は ${dice[0]} + ${dice[1]} = ${dice[0] + dice[1]}。`);
+  const [first, second] = next.orderRolls;
+  if (first === null || second === null) return next;
+  const totals = [first[0] + first[1], second[0] + second[1]];
+  if (totals[0] === totals[1]) {
+    next.orderRolls = [null, null];
+    addLog(next, `どちらも${totals[0]}。もう一度振ろう。`, 'accent');
+    return next;
+  }
+  next.orderWinner = totals[0] > totals[1] ? 0 : 1;
+  next.phase = 'order-choice';
+  addLog(next, `${next.players[next.orderWinner].name}の目が大きい。先手か後手を選ぼう。`, 'accent');
+  return next;
+}
+
+export function chooseTurnOrder(state, choice) {
+  assertPhase(state, 'order-choice');
+  if (choice !== 'first' && choice !== 'second') throw new Error('Choose first or second.');
+  const next = copy(state);
+  const chooser = next.orderWinner;
+  const firstPlayer = choice === 'first' ? chooser : chooser === 0 ? 1 : 0;
+  const secondPlayer = firstPlayer === 0 ? 1 : 0;
+  next.firstPlayer = firstPlayer;
+  next.currentPlayer = firstPlayer;
+  next.phase = 'awaiting-roll';
+  next.players[secondPlayer].item = { type: ITEM_TYPES.CHARM, level: 'normal' };
+  next.players[secondPlayer].openingRerollAvailable = true;
+  addLog(next, `${next.players[chooser].name}が${choice === 'first' ? '先手' : '後手'}を選択。`, 'accent');
+  addLog(next, `${next.players[secondPlayer].name}は後手補正で「${ITEM_LABELS[ITEM_TYPES.CHARM]}」を獲得。`, 'accent');
+  addLog(next, `${next.players[firstPlayer].name}の手番からスタート。`);
+  return next;
 }
 
 export function roll(state, dice) {
@@ -129,7 +184,7 @@ export function reroll(state, dice, source) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   if (source === 'opening') {
-    if (next.currentPlayer !== 1 || player.turnsTaken !== 0 || !player.openingRerollAvailable) throw new Error('The opening reroll is not available.');
+    if (next.currentPlayer === (next.firstPlayer ?? 0) || player.turnsTaken !== 0 || !player.openingRerollAvailable) throw new Error('The opening reroll is not available.');
     player.openingRerollAvailable = false;
     addLog(next, `${player.name}が後手補正で振り直した。`, 'accent');
   } else if (source === 'badge') {
@@ -340,7 +395,7 @@ export function endTurn(state) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   player.turnsTaken += 1;
-  if (next.currentPlayer === 1 && player.turnsTaken === 1) player.openingRerollAvailable = false;
+  if (next.currentPlayer !== (next.firstPlayer ?? 0) && player.turnsTaken === 1) player.openingRerollAvailable = false;
   const nextPlayer = next.currentPlayer === 0 ? 1 : 0;
   next.currentPlayer = nextPlayer;
   next.turn += 1;

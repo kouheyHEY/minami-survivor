@@ -166,7 +166,6 @@ function SetupScreen() {
                             <span>
                                 <i />
                                 PLAYER {index + 1}
-                                {index === 1 && <small>後手補正あり</small>}
                             </span>
                             <input
                                 value={name}
@@ -271,11 +270,13 @@ function PlayerCard({
     index,
     active,
     perspective,
+    order,
 }: {
     player: Player;
     index: number;
     active: boolean;
     perspective: "self" | "opponent";
+    order: string;
 }) {
     const item = player.item ? ITEM_META[player.item.type] : null;
     const itemLevel = player.item?.level;
@@ -286,7 +287,7 @@ function PlayerCard({
             <div className="player-title">
                 <span className="token">{player.name.slice(0, 1)}</span>
                 <div>
-                    <small>{perspective === "self" ? "YOU" : "RIVAL"} · PLAYER {index + 1}</small>
+                    <small>{perspective === "self" ? "YOU" : "RIVAL"} · {order}</small>
                     <h2>{player.name}</h2>
                 </div>
                 {active && <span className="turn-badge">TURN</span>}
@@ -323,7 +324,27 @@ function PlayerCard({
     );
 }
 
+const SPACE_TIPS = {
+    item: {
+        title: "ITEMマス",
+        text: "到達・通過すると、通常アイテムを1つ選べます。持っているときは、保持するか交換するかを選べます。",
+    },
+    super: {
+        title: "SUPER ITEMマス",
+        text: "到達・通過すると、最初からSUPERのアイテムを1つ選べます。持っているときは、保持するか交換するかを選べます。",
+    },
+} as const;
+
 function Board({ players }: { players: GameState["players"] }) {
+    // タップで開いたマスの説明。ほかの場所に触れたら閉じる。
+    const [openTip, setOpenTip] = useState<number | null>(null);
+    useEffect(() => {
+        if (openTip === null) return;
+        const close = () => setOpenTip(null);
+        document.addEventListener("pointerdown", close);
+        return () => document.removeEventListener("pointerdown", close);
+    }, [openTip]);
+
     const spaces = Array.from({ length: Math.ceil(GOAL / 15) }, (_, row) => {
         const rowSpaces = Array.from(
             { length: Math.min(15, GOAL - row * 15) },
@@ -333,28 +354,30 @@ function Board({ players }: { players: GameState["players"] }) {
     }).flat();
     return (
         <section className="board-panel" aria-label="73マスのゲーム盤">
-            <div className="board-head">
-                <div>
-                    <span className="section-index">01</span>
-                    <h2>THE ROAD</h2>
-                </div>
-                <p>
-                    <span className="legend-dot item" /> ITEM{" "}
-                    <span className="legend-dot super" /> SUPER
-                </p>
-            </div>
             <div className="board-scroll">
                 <div className="board-grid">
-                    {spaces.map((space) => {
+                    {spaces.map((space, order) => {
                         const occupants = players
                             .map((player, index) => ({ player, index }))
                             .filter(({ player }) => player.position === space);
                         const isItem = ITEM_SPACES.includes(space);
+                        const tip = isItem ? SPACE_TIPS[space === 45 ? "super" : "item"] : null;
+                        const tipOpen = openTip === space;
                         return (
                             <div
                                 key={space}
-                                className={`space ${isItem ? "item-space" : ""} ${space === 45 ? "super-space" : ""} ${space === GOAL ? "goal-space" : ""}`}
+                                className={`space ${isItem ? "item-space has-tip" : ""} ${space === 45 ? "super-space" : ""} ${space === GOAL ? "goal-space" : ""} ${tipOpen ? "is-tip-open" : ""} ${order % 15 > 7 ? "tip-left" : ""}`}
                             >
+                                {tip && (
+                                    <button
+                                        type="button"
+                                        className="space-hit"
+                                        aria-label={`${space}マス目：${tip.title}の説明`}
+                                        aria-expanded={tipOpen}
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                        onClick={() => setOpenTip(tipOpen ? null : space)}
+                                    />
+                                )}
                                 <span className="space-number">{space}</span>
                                 {isItem && (
                                     <span className="space-symbol">
@@ -375,6 +398,12 @@ function Board({ players }: { players: GameState["players"] }) {
                                         </span>
                                     ))}
                                 </div>
+                                {tip && (
+                                    <div className="space-tip" role="tooltip">
+                                        <strong>{tip.title}</strong>
+                                        <p>{tip.text}</p>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -448,7 +477,8 @@ function ChainResult({ game }: { game: GameState }) {
     );
 }
 
-// スマホで押しやすいよう、まず大きなカードをタップして効果を確かめ、下のボタンで決める。
+// スマホで押しやすいよう、大きなカードをタップして効果を確かめ、すぐ下のボタンで決める。
+// 選んでも高さが変わらないようにして、決定ボタンが画面の外へ押し出されないようにする。
 function ItemPicker({
     current,
     level,
@@ -459,10 +489,19 @@ function ItemPicker({
     canKeep: boolean;
 }) {
     const [selected, setSelected] = useState<ItemType | null>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
     const selectedMeta = selected ? ITEM_META[selected] : null;
 
+    // 選び始めたときに決定ボタンが画面の外なら、見える位置まで寄せる。
+    useEffect(() => {
+        const area = rootRef.current?.closest(".action-area");
+        if (area && area.getBoundingClientRect().bottom > window.innerHeight) {
+            area.scrollIntoView({ block: "end", behavior: "smooth" });
+        }
+    }, []);
+
     return (
-        <div className="item-picker">
+        <div className="item-picker" ref={rootRef}>
             <h2>
                 {current
                     ? "アイテムを交換する？"
@@ -470,11 +509,6 @@ function ItemPicker({
                       ? "SUPERアイテムを選ぶ"
                       : "アイテムを選ぶ"}
             </h2>
-            <p>
-                {current
-                    ? `現在は「${ITEM_META[current.type].label}」を所持中。保持することもできます。`
-                    : "持てるアイテムは1つだけ。タップして効果を見てから決めよう。"}
-            </p>
             <div className="item-choices" role="radiogroup" aria-label="選べるアイテム">
                 {(
                     Object.entries(ITEM_META) as Array<
@@ -491,19 +525,21 @@ function ItemPicker({
                     >
                         <b aria-hidden="true">{meta.icon}</b>
                         <strong>{meta.label}</strong>
-                        <small>{meta.short}</small>
                     </button>
                 ))}
             </div>
-            <div className="item-picker-detail" aria-live="polite">
-                {selected ? (
-                    <ItemDescription type={selected} />
+            <p className="item-picker-effect" aria-live="polite">
+                {selectedMeta ? (
+                    <>
+                        <b>{level === "super" ? "SUPER：" : "通常："}</b>
+                        {level === "super" ? selectedMeta.super : selectedMeta.normal}
+                    </>
+                ) : current ? (
+                    `今は${ITEM_META[current.type].label}を所持中。交換するなら、タップして効果を確かめよう。`
                 ) : (
-                    <p className="item-picker-hint">
-                        アイテムをタップすると、ここに効果が出ます。
-                    </p>
+                    "アイテムをタップすると、ここに効果が出ます。持てるのは1つだけです。"
                 )}
-            </div>
+            </p>
             <div className="action-buttons">
                 <button
                     className="primary-button"
@@ -524,16 +560,164 @@ function ItemPicker({
     );
 }
 
+// 先手・後手を決める。お互いに2D6を振り、目が大きい人が選ぶ。
+function TurnOrderPanel({
+    game,
+    selfIndex,
+    busy,
+}: {
+    game: GameState;
+    selfIndex: number | null;
+    busy: boolean;
+}) {
+    const choosing = game.phase === "order-choice";
+    const winner = game.orderWinner;
+    const canChoose = choosing && winner !== null && (selfIndex === null || selfIndex === winner);
+    const waitingForRival = !choosing && selfIndex !== null && game.orderRolls[selfIndex] !== null;
+
+    return (
+        <section className={`action-panel ${busy ? "is-busy" : ""}`} aria-busy={busy}>
+            <div className="action-kicker">TURN ORDER</div>
+            <h2>
+                {choosing && winner !== null
+                    ? `${game.players[winner].name}が先手・後手を選ぶ`
+                    : "サイコロで先手・後手を決めよう"}
+            </h2>
+            <div className="order-rolls">
+                {game.players.map((player, index) => {
+                    const roll = game.orderRolls[index];
+                    const canRoll = !choosing && roll === null && (selfIndex === null || selfIndex === index);
+                    return (
+                        <div
+                            key={player.id}
+                            className={`order-roll player-${index + 1} ${winner === index ? "is-winner" : ""}`}
+                        >
+                            <span>{player.name}</span>
+                            {roll ? (
+                                <strong>
+                                    {roll[0]} + {roll[1]} = {roll[0] + roll[1]}
+                                </strong>
+                            ) : canRoll ? (
+                                <button
+                                    className="primary-button"
+                                    onClick={() => gameActions.rollForOrder(index as 0 | 1)}
+                                >
+                                    {selfIndex === null ? "サイコロを振る" : "自分のサイコロを振る"}
+                                </button>
+                            ) : (
+                                <small>まだ振っていません</small>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+            {canChoose ? (
+                <>
+                    <p>後手は「めじるしチャーム」を持って始まり、最初の手番だけ振り直せます。</p>
+                    <div className="action-buttons">
+                        <button
+                            className="primary-button"
+                            onClick={() => gameActions.chooseTurnOrder("first")}
+                        >
+                            先手にする
+                        </button>
+                        <button
+                            className="ghost-button"
+                            onClick={() => gameActions.chooseTurnOrder("second")}
+                        >
+                            後手にする
+                        </button>
+                    </div>
+                </>
+            ) : choosing && winner !== null ? (
+                <p>{game.players[winner].name}が先手か後手を選んでいます。</p>
+            ) : waitingForRival ? (
+                <p>相手がサイコロを振るのを待っています。</p>
+            ) : (
+                <p>同じ目のときは、もう一度振ります。</p>
+            )}
+        </section>
+    );
+}
+
+// ゲーム開始時の説明。OKを押すまで盤面は操作できない。
+function IntroModal() {
+    const okRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        okRef.current?.focus();
+    }, []);
+
+    return (
+        <div className="intro-backdrop">
+            <section
+                className="intro-card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="intro-title"
+            >
+                <span className="section-index">HOW TO PLAY</span>
+                <h2 id="intro-title">先に73マスへ届いた人の勝ち</h2>
+                <ol className="intro-steps">
+                    <li>
+                        <b>1. 先手・後手を決める</b>
+                        お互いに2D6を振り、目が大きい人が先手か後手を選びます。後手は「めじるしチャーム」を持って始まり、最初の手番だけ振り直せます。
+                    </li>
+                    <li>
+                        <b>2. サイコロを振って進む</b>
+                        2D6の合計だけ進みます。行動が終わったら「番を終わる」を押します。
+                    </li>
+                    <li>
+                        <b>3. 合計7と合計3</b>
+                        7なら追加ロールで出目を足し続けられます。3なら進む前にアイテムを取るか、SUPERにできます。
+                    </li>
+                    <li>
+                        <b>4. アイテムマス</b>
+                        10・25マス目で通常、45マス目でSUPERのアイテムを選べます。持てるのは1つだけです。
+                    </li>
+                    <li>
+                        <b>5. 2位のとき</b>
+                        サイコロで進んだあと、1マス追加で進めます。
+                    </li>
+                </ol>
+                <div className="intro-items">
+                    {Object.values(ITEM_META).map((meta) => (
+                        <div key={meta.label}>
+                            <b aria-hidden="true">{meta.icon}</b>
+                            <div>
+                                <strong>{meta.label}</strong>
+                                <p>通常：{meta.normal}</p>
+                                <p>SUPER：{meta.super}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <p className="intro-note">細かいルールは「遊び方」でいつでも見られます。</p>
+                <div className="intro-actions">
+                    <button
+                        ref={okRef}
+                        className="primary-button"
+                        onClick={gameActions.closeIntro}
+                    >
+                        OK、はじめる
+                    </button>
+                </div>
+            </section>
+        </div>
+    );
+}
+
 function ActionPanel({
     game,
     canControl,
     online,
     busy,
+    selfIndex,
 }: {
     game: GameState;
     canControl: boolean;
     online: boolean;
     busy: boolean;
+    selfIndex: number | null;
 }) {
     const player = game.players[game.currentPlayer];
     const item = player.item;
@@ -555,6 +739,10 @@ function ActionPanel({
                 </button>
             </div>
         );
+    }
+
+    if (game.phase === "order-roll" || game.phase === "order-choice") {
+        return <TurnOrderPanel game={game} selfIndex={selfIndex} busy={busy} />;
     }
 
     if (!canControl) {
@@ -632,8 +820,7 @@ function ActionPanel({
                         >
                             {roll.total === 7 ? "7をキープ" : "この出目で進む"}
                         </button>
-                        {game.currentPlayer === 1 &&
-                            player.turnsTaken === 0 &&
+                        {player.turnsTaken === 0 &&
                             player.openingRerollAvailable && (
                                 <button
                                     className="ghost-button"
@@ -864,6 +1051,7 @@ type SoundSnapshot = {
     turn: number;
     dice: string;
     chain: string;
+    order: string;
     items: string[];
     positions: number[];
     shown: number[];
@@ -880,6 +1068,7 @@ function useGameSounds(game: GameState, shown: number[], selfIndex: number | nul
             turn: game.turn,
             dice: JSON.stringify(game.pendingRoll?.dice ?? null),
             chain: JSON.stringify(game.lastChainResult),
+            order: JSON.stringify(game.orderRolls ?? null),
             items: game.players.map((player) => JSON.stringify(player.item)),
             positions: game.players.map((player) => player.position),
             shown,
@@ -892,6 +1081,7 @@ function useGameSounds(game: GameState, shown: number[], selfIndex: number | nul
         const sounds = new Set<SoundName>();
         if (current.status === "won" && before.status !== "won") sounds.add("win");
         if (current.dice !== "null" && current.dice !== before.dice) sounds.add("dice");
+        if (current.order !== before.order && game.orderRolls?.some(Boolean)) sounds.add("dice");
         if (current.chain !== before.chain && game.lastChainResult) {
             sounds.add(game.lastChainResult.outcome === "completed" ? "dice" : "chain");
         }
@@ -921,7 +1111,11 @@ function MatchScreen({ game }: { game: GameState }) {
     const online = useSelector(gameStore, (state) => state.online);
     const busy = useSelector(gameStore, (state) => state.busy);
     const error = useSelector(gameStore, (state) => state.error);
+    const showIntro = useSelector(gameStore, (state) => state.showIntro);
     const selfIndex = online?.room.seat === 1 ? 1 : 0;
+    const ordering = game.phase === "order-roll" || game.phase === "order-choice";
+    const orderLabel = (index: number) =>
+        ordering ? `PLAYER ${index + 1}` : index === (game.firstPlayer ?? 0) ? "先手" : "後手";
     const rivalIndex = selfIndex === 0 ? 1 : 0;
     const shown = useDisplayedPositions(
         game.players.map((player) => player.position),
@@ -946,6 +1140,7 @@ function MatchScreen({ game }: { game: GameState }) {
 
     return (
         <main className="game-page">
+            {showIntro && <IntroModal />}
             <div className="game-toolbar">
                 <div>
                     <span>{online ? `ONLINE · ROOM ${online.room.code}` : "LOCAL MATCH"}</span>
@@ -966,7 +1161,8 @@ function MatchScreen({ game }: { game: GameState }) {
                         player={players[rivalIndex]}
                         index={rivalIndex}
                         perspective="opponent"
-                        active={game.status === "playing" && game.currentPlayer === rivalIndex}
+                        order={orderLabel(rivalIndex)}
+                        active={game.status === "playing" && !ordering && game.currentPlayer === rivalIndex}
                     />
                 </div>
                 <Board players={players} />
@@ -975,7 +1171,8 @@ function MatchScreen({ game }: { game: GameState }) {
                         player={players[selfIndex]}
                         index={selfIndex}
                         perspective="self"
-                        active={game.status === "playing" && game.currentPlayer === selfIndex}
+                        order={orderLabel(selfIndex)}
+                        active={game.status === "playing" && !ordering && game.currentPlayer === selfIndex}
                     />
                 </div>
                 <div className="action-area">
@@ -996,6 +1193,7 @@ function MatchScreen({ game }: { game: GameState }) {
                         canControl={canControl}
                         online={online !== null}
                         busy={busy}
+                        selfIndex={online ? selfIndex : null}
                     />
                 )}
                 </div>

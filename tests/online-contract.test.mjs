@@ -16,6 +16,8 @@ test('オンライン対戦は共通の game-server へ操作を送り、端末�
   assert.match(store, /if \(isOnline\(\)\) return void sendAction\(\{ type: 'roll' \}\)/);
   assert.match(store, /if \(isOnline\(\)\) return void sendAction\(\{ type: 'challenge' \}\)/);
   assert.match(store, /OFFLINE_POLL_MS/);
+  // 先手・後手のサイコロが同時に届いて重なっても、押し直さずに済む
+  assert.match(store, /action\.type !== 'rollOrder'/);
 });
 
 test('部屋をつくる・参加する・相手を待つ・相手の番を画面で分けて示す', async () => {

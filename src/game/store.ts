@@ -5,8 +5,9 @@ import {
   advanceMovement,
   challengeChain,
   chooseItem,
+  chooseTurnOrder,
   confirmRoll,
-  createGame,
+  createOrderGame,
   declineItemExchange,
   declineItemUpgrade,
   endTurn,
@@ -15,6 +16,7 @@ import {
   reroll,
   resolveChain,
   roll,
+  rollForOrder,
   skipRankBonus,
   takeRankBonus,
   useTobacco,
@@ -55,6 +57,7 @@ interface AppState {
   online: OnlineState | null
   busy: boolean
   soundOn: boolean
+  showIntro: boolean
   error: string
 }
 
@@ -70,6 +73,7 @@ export const gameStore = createStore<AppState>({
   online: null,
   busy: false,
   soundOn: loadSoundPreference(),
+  showIntro: false,
   error: '',
 })
 
@@ -149,7 +153,7 @@ function onVisible() {
   if (document.visibilityState === 'visible') void refreshRoom()
 }
 
-function enterRoom(room: RoomView, seat: SavedSeat) {
+function enterRoom(room: RoomView, seat: SavedSeat, showIntro: boolean) {
   seatStorage.save(seat)
   unsubscribeRoom?.()
   gameStore.setState((state) => ({
@@ -159,6 +163,7 @@ function enterRoom(room: RoomView, seat: SavedSeat) {
     busy: false,
     error: '',
     online: { seat, room, connected: false },
+    showIntro,
   }))
   applyRoom(room)
   setConnected(false)
@@ -200,8 +205,16 @@ function sendAction(action: OnlineAction) {
   return withBusy(async () => {
     const online = gameStore.state.online
     if (!online) return
-    const { room } = await roomApi.act(online.seat, online.room.version, action)
-    applyRoom(room)
+    try {
+      const { room } = await roomApi.act(online.seat, online.room.version, action)
+      applyRoom(room)
+    } catch (error) {
+      // 先手・後手を決めるサイコロは2人が同時に振りやすい。相手と重なっただけなら、最新の状態で1回だけ送り直す。
+      if (action.type !== 'rollOrder' || !(error instanceof RoomError) || error.status !== 409 || !error.room) throw error
+      applyRoom(error.room)
+      const { room } = await roomApi.act(online.seat, error.room.version, action)
+      applyRoom(room)
+    }
   })
 }
 
@@ -235,7 +248,8 @@ export const gameActions = {
       ...state,
       screen: 'game',
       mode: 'local',
-      game: createGame(state.names),
+      showIntro: true,
+      game: createOrderGame(state.names),
       error: '',
     }))
   },
@@ -249,20 +263,20 @@ export const gameActions = {
     stopMovement()
     gameStore.setState((state) => ({
       ...state,
-      game: createGame(state.names),
+      game: createOrderGame(state.names),
       error: '',
     }))
   },
   createRoom() {
     return withBusy(async () => {
       const { room, token } = await roomApi.create(gameStore.state.onlineName)
-      enterRoom(room, { code: room.code, token: token! })
+      enterRoom(room, { code: room.code, token: token! }, true)
     })
   },
   joinRoom() {
     return withBusy(async () => {
       const { room, token } = await roomApi.join(gameStore.state.joinCode, gameStore.state.onlineName)
-      enterRoom(room, { code: room.code, token: token! })
+      enterRoom(room, { code: room.code, token: token! }, true)
     })
   },
   resumeRoom() {
@@ -272,12 +286,23 @@ export const gameActions = {
       try {
         const { room } = await roomApi.get(seat.code, seat.token)
         if (room.seat === null) return seatStorage.clear()
-        enterRoom(room, seat)
+        enterRoom(room, seat, false)
       } catch (error) {
         if (error instanceof RoomError && error.status === 404) return seatStorage.clear()
         throw error
       }
     })
+  },
+  closeIntro() {
+    gameStore.setState((state) => ({ ...state, showIntro: false }))
+  },
+  rollForOrder(playerIndex: 0 | 1) {
+    if (isOnline()) return void sendAction({ type: 'rollOrder' })
+    updateGame((game) => rollForOrder(game, playerIndex, randomDice()))
+  },
+  chooseTurnOrder(choice: 'first' | 'second') {
+    if (isOnline()) return void sendAction({ type: 'chooseOrder', choice })
+    updateGame((game) => chooseTurnOrder(game, choice))
   },
   roll() {
     if (isOnline()) return void sendAction({ type: 'roll' })

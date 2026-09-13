@@ -1,6 +1,6 @@
 export type ItemType = 'badge' | 'charm' | 'tobacco'
 export type ItemLevel = 'normal' | 'super'
-export type Phase = 'awaiting-roll' | 'roll-options' | 'moving' | 'choose-item' | 'upgrade-item-choice' | 'item-exchange-choice' | 'chain-choice' | 'chain-resolution' | 'rank-bonus-choice' | 'turn-complete' | 'finished'
+export type Phase = 'order-roll' | 'order-choice' | 'awaiting-roll' | 'roll-options' | 'moving' | 'choose-item' | 'upgrade-item-choice' | 'item-exchange-choice' | 'chain-choice' | 'chain-resolution' | 'rank-bonus-choice' | 'turn-complete' | 'finished'
 export type LogTone = 'neutral' | 'accent' | 'danger' | 'win'
 export type DicePair = [number, number]
 export type ChainOutcome = 'started' | 'success' | 'completed'
@@ -47,6 +47,9 @@ export interface GameState {
     source: 'dice' | 'charm' | 'super-badge'
   } | null
   nextLogId: number
+  firstPlayer: 0 | 1
+  orderRolls: [DicePair | null, DicePair | null]
+  orderWinner: 0 | 1 | null
   players: [Player, Player]
   log: Array<{ id: number; message: string; tone: LogTone }>
 }
@@ -57,6 +60,9 @@ export const GOAL: number
 export const ITEM_SPACES: readonly number[]
 
 export function createGame(names?: string[]): GameState
+export function createOrderGame(names?: string[]): GameState
+export function rollForOrder(state: GameState, playerIndex: 0 | 1, dice: DicePair): GameState
+export function chooseTurnOrder(state: GameState, choice: 'first' | 'second'): GameState
 export function roll(state: GameState, dice: DicePair): GameState
 export function reroll(state: GameState, dice: DicePair, source: 'opening' | 'badge'): GameState
 export function confirmRoll(state: GameState, options?: { adjustment?: number; useSuperBadge?: boolean }): GameState

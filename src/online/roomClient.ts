@@ -8,6 +8,8 @@ const GAME_KEY = 'minami-survivor'
 const SEAT_STORAGE_KEY = 'minami-survivor:online-seat'
 
 export type OnlineAction =
+  | { type: 'rollOrder' }
+  | { type: 'chooseOrder'; choice: 'first' | 'second' }
   | { type: 'roll' }
   | { type: 'reroll'; source: 'opening' | 'badge' }
   | { type: 'confirm'; adjustment?: number; useSuperBadge?: boolean }

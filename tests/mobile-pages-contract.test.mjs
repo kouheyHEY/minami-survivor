@@ -85,9 +85,11 @@ test('アイテムはカードをタップして効果を確かめ、大きな�
   assert.match(screen, /SUPER：/);
   assert.doesNotMatch(screen, /item-choice-popover/);
   assert.match(styles, /\.item-inspector:hover\s+\.item-description/);
-  assert.match(styles, /\.item-choice\s*{[^}]*min-height:\s*76px/);
+  assert.match(styles, /\.item-choice\s*{[^}]*min-height:\s*60px/);
   assert.match(styles, /\.item-choice\.is-selected/);
-  assert.match(styles, /\.item-picker-detail\s*{[^}]*min-height/);
+  // 選んでも高さが変わらない
+  assert.match(styles, /\.item-picker-effect\s*{[^}]*height:\s*54px/);
+  assert.match(screen, /scrollIntoView/);
 });
 
 test('合計3の強化と同マス交換は確認ボタンで任意選択する', async () => {
