@@ -24,6 +24,7 @@ import {
 import {
   RoomError,
   isWaiting,
+  normalizeRoomCode,
   roomApi,
   roomCodeFromUrl,
   seatStorage,
@@ -32,6 +33,7 @@ import {
   type RoomView,
   type SavedSeat,
 } from '../online/roomClient.js'
+import { loadSoundPreference, setSoundEnabled } from '../audio/sound.js'
 
 const MOVEMENT_STEP_MS = 160
 const OFFLINE_POLL_MS = 3000
@@ -52,6 +54,7 @@ interface AppState {
   game: GameState | null
   online: OnlineState | null
   busy: boolean
+  soundOn: boolean
   error: string
 }
 
@@ -66,6 +69,7 @@ export const gameStore = createStore<AppState>({
   game: null,
   online: null,
   busy: false,
+  soundOn: loadSoundPreference(),
   error: '',
 })
 
@@ -218,7 +222,12 @@ export const gameActions = {
     gameStore.setState((state) => ({ ...state, onlineName: name }))
   },
   setJoinCode(code: string) {
-    gameStore.setState((state) => ({ ...state, joinCode: code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) }))
+    gameStore.setState((state) => ({ ...state, joinCode: normalizeRoomCode(code) }))
+  },
+  toggleSound() {
+    const soundOn = !gameStore.state.soundOn
+    setSoundEnabled(soundOn)
+    gameStore.setState((state) => ({ ...state, soundOn }))
   },
   start() {
     stopMovement()

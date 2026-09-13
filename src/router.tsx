@@ -6,8 +6,25 @@ import {
   createRouter,
   createHashHistory,
 } from '@tanstack/react-router'
+import { useSelector } from '@tanstack/react-store'
+import { gameActions, gameStore } from './game/store'
 import { GamePage } from './screens/GamePage'
 import { RulesPage } from './screens/RulesPage'
+
+function SoundToggle() {
+  const soundOn = useSelector(gameStore, (state) => state.soundOn)
+  return (
+    <button
+      type="button"
+      className="sound-toggle"
+      aria-label="効果音"
+      aria-pressed={soundOn}
+      onClick={gameActions.toggleSound}
+    >
+      {soundOn ? '音 ON' : '音 OFF'}
+    </button>
+  )
+}
 
 function RootLayout() {
   return (
@@ -20,6 +37,7 @@ function RootLayout() {
         <nav aria-label="メインナビゲーション">
           <Link to="/" activeProps={{ className: 'active' }}>ゲーム</Link>
           <Link to="/rules" activeProps={{ className: 'active' }}>遊び方</Link>
+          <SoundToggle />
         </nav>
       </header>
       <Outlet />

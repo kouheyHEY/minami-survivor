@@ -1,5 +1,5 @@
 import { useSelector } from "@tanstack/react-store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     GOAL,
     ITEM_LABELS,
@@ -10,7 +10,8 @@ import {
     type Player,
 } from "../game/engine.js";
 import { gameActions, gameStore } from "../game/store.js";
-import { inviteUrl } from "../online/roomClient.js";
+import { inviteUrl, normalizeRoomCode } from "../online/roomClient.js";
+import { playSound, type SoundName } from "../audio/sound.js";
 
 const ITEM_META: Record<
     ItemType,
@@ -56,6 +57,12 @@ function OnlineSetup() {
     const busy = useSelector(gameStore, (state) => state.busy);
     const error = useSelector(gameStore, (state) => state.error);
     const invited = joinCode.length === 6;
+    // 入力欄に見せる文字。日本語入力の変換中は整えずにそのまま持つ（整えると文字が二重になる）。
+    const [codeText, setCodeText] = useState(joinCode);
+    const commitCode = (value: string) => {
+        gameActions.setJoinCode(value);
+        setCodeText(normalizeRoomCode(value));
+    };
 
     return (
         <div className={`online-setup ${invited ? "is-invited" : ""}`}>
@@ -91,9 +98,16 @@ function OnlineSetup() {
                     }}
                 >
                     <input
-                        value={joinCode}
-                        onChange={(event) =>
-                            gameActions.setJoinCode(event.target.value)
+                        value={codeText}
+                        onChange={(event) => {
+                            if ((event.nativeEvent as InputEvent).isComposing) {
+                                setCodeText(event.target.value);
+                            } else {
+                                commitCode(event.target.value);
+                            }
+                        }}
+                        onCompositionEnd={(event) =>
+                            commitCode(event.currentTarget.value)
                         }
                         placeholder="6文字のコード"
                         aria-label="部屋コード"
@@ -378,21 +392,18 @@ function Dice({ value }: { value: number }) {
     );
 }
 
-function EventStage({ events }: { events: GameState["log"] }) {
+// 直近の出来事。画面の上に重ねず、操作パネルのすぐ上に高さを固定して並べる。
+function EventFeed({ events }: { events: GameState["log"] }) {
     return (
-        <div className="event-stage" aria-live="assertive" aria-atomic="false">
-            {events
-                .slice(0, 3)
-                .reverse()
-                .map((event, index) => (
-                    <p
-                        key={event.id}
-                        className={`event-card ${event.tone}`}
-                        style={{ animationDelay: `${index * 140}ms` }}
-                    >
-                        {event.message}
-                    </p>
-                ))}
+        <div className="event-feed" aria-live="polite">
+            {events.slice(0, 2).map((event, index) => (
+                <p
+                    key={event.id}
+                    className={`event-line ${event.tone} ${index === 0 ? "is-latest" : ""}`}
+                >
+                    {event.message}
+                </p>
+            ))}
         </div>
     );
 }
@@ -813,6 +824,59 @@ function useDisplayedPositions(targets: number[], animate: boolean) {
     return display;
 }
 
+type SoundSnapshot = {
+    status: GameState["status"];
+    currentPlayer: GameState["currentPlayer"];
+    turn: number;
+    dice: string;
+    chain: string;
+    items: string[];
+    positions: number[];
+    shown: number[];
+};
+
+// 状態の変化から効果音を選ぶ。操作した端末でも、相手の操作を受け取った端末でも同じように鳴る。
+function useGameSounds(game: GameState, shown: number[], selfIndex: number | null) {
+    const previous = useRef<SoundSnapshot | null>(null);
+
+    useEffect(() => {
+        const current: SoundSnapshot = {
+            status: game.status,
+            currentPlayer: game.currentPlayer,
+            turn: game.turn,
+            dice: JSON.stringify(game.pendingRoll?.dice ?? null),
+            chain: JSON.stringify(game.lastChainResult),
+            items: game.players.map((player) => JSON.stringify(player.item)),
+            positions: game.players.map((player) => player.position),
+            shown,
+        };
+        const before = previous.current;
+        previous.current = current;
+        // 最初の表示や、再戦で最初に戻ったときは鳴らさない
+        if (!before || current.turn < before.turn) return;
+
+        const sounds = new Set<SoundName>();
+        if (current.status === "won" && before.status !== "won") sounds.add("win");
+        if (current.dice !== "null" && current.dice !== before.dice) sounds.add("dice");
+        if (current.chain !== before.chain && game.lastChainResult) {
+            sounds.add(game.lastChainResult.outcome === "completed" ? "dice" : "chain");
+        }
+        if (current.items.some((item, index) => item !== "null" && item !== before.items[index])) {
+            sounds.add("item");
+        }
+        if (current.positions.some((position, index) => position < before.positions[index])) {
+            sounds.add("danger");
+        }
+        if (current.status === "playing" && current.currentPlayer !== before.currentPlayer) {
+            sounds.add(selfIndex !== null && current.currentPlayer === selfIndex ? "myTurn" : "turn");
+        }
+        if (current.shown.some((position, index) => position > before.shown[index])) {
+            sounds.add("step");
+        }
+        for (const sound of sounds) playSound(sound, sound === "step" ? 0.35 : 0.8);
+    });
+}
+
 function GameScreen() {
     const game = useSelector(gameStore, (state) => state.game);
     if (!game) return null;
@@ -839,6 +903,7 @@ function MatchScreen({ game }: { game: GameState }) {
         position: shown[index],
     })) as GameState["players"];
     const canControl = online === null || game.currentPlayer === selfIndex;
+    useGameSounds(game, shown, online ? selfIndex : null);
 
     const leave = () => {
         if (online && !window.confirm("部屋を出ると、この対戦には戻れません。部屋を出ますか？")) return;
@@ -847,7 +912,6 @@ function MatchScreen({ game }: { game: GameState }) {
 
     return (
         <main className="game-page">
-            <EventStage events={game.log} />
             <div className="game-toolbar">
                 <div>
                     <span>{online ? `ONLINE · ROOM ${online.room.code}` : "LOCAL MATCH"}</span>
@@ -880,6 +944,8 @@ function MatchScreen({ game }: { game: GameState }) {
                         active={game.status === "playing" && game.currentPlayer === selfIndex}
                     />
                 </div>
+                <div className="action-area">
+                <EventFeed events={game.log} />
                 {remaining > 0 ? (
                     <section className="action-panel">
                         <div className="moving-panel" role="status" aria-live="polite">
@@ -898,6 +964,7 @@ function MatchScreen({ game }: { game: GameState }) {
                         busy={busy}
                     />
                 )}
+                </div>
                 <details className="log-panel">
                     <summary>
                         <span className="section-index">02</span>

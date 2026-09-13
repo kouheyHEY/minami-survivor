@@ -139,11 +139,16 @@ export const seatStorage = {
   },
 }
 
+// 全角の英数字・小文字・空白や記号が混ざっていても、部屋コードとして読めるようにする。
+export function normalizeRoomCode(value: string) {
+  return value.normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+}
+
 export function inviteUrl(code: string) {
   return `${window.location.origin}${window.location.pathname}#/?room=${code}`
 }
 
 export function roomCodeFromUrl() {
   const query = window.location.hash.split('?')[1] ?? ''
-  return new URLSearchParams(query).get('room')?.toUpperCase() ?? ''
+  return normalizeRoomCode(new URLSearchParams(query).get('room') ?? '')
 }

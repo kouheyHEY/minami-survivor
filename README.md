@@ -33,6 +33,10 @@ npm run build
 - アイテム使用後も継続する手番
 - 73マス以上への到達による勝利
 
+## 効果音
+
+`public/sounds/` の効果音は [イワシロ音楽素材](https://iwashiro-sounds.work/) のものです（クレジット表記が必要。遊び方ページに記載）。どの場面で鳴らすかは `src/screens/GamePage.tsx` の `useGameSounds`、ファイルとの対応は `src/audio/sound.ts` で決めています。画面右上の「音 ON / OFF」で切り替えられ、設定は端末に保存されます。
+
 ## オンライン対戦
 
 共通サーバー [game-server](https://github.com/kouheyHEY/game-server)（Supabase）の Edge Function `game-rooms` を使います。このリポジトリにはサーバーの設定を置きません。

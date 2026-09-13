@@ -26,6 +26,8 @@ export function RulesPage() {
           <article><b>↯</b><h3>{ITEM_LABELS[ITEM_TYPES.TOBACCO]}</h3><p><strong>NORMAL</strong> 自分-3、相手-7。</p><p><strong>SUPER</strong> 自分+3、相手-7。</p><p>使用後も通常行動を続けます。この移動ではアイテムを取得しません。</p></article>
         </div>
       </section>
+
+      <p className="credits">効果音：イワシロ音楽素材（<a href="https://iwashiro-sounds.work/" target="_blank" rel="noreferrer">iwashiro-sounds.work</a>）</p>
     </main>
   )
 }
