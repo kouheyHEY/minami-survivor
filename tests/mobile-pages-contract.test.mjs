@@ -36,8 +36,8 @@ test('対戦画面は連鎖結果を明示し、スマホ盤面を横スクロ�
   ]);
 
   assert.match(screen, /連チャン/);
-  assert.match(screen, /劣勢ボーナス/);
-  assert.match(screen, /失敗ペナルティなし/);
+  assert.match(screen, /追加ロール/);
+  assert.match(screen, /順位ボーナス/);
   assert.match(screen, /chain-result/);
   assert.match(screen, /MATCH LOG/);
   assert.match(styles, /\.players-row\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
@@ -54,7 +54,7 @@ test('手番終了と連鎖確定は明示ボタンで行い、全イベント�
   ]);
 
   assert.match(screen, /番を終わる/);
-  assert.match(screen, /連鎖を確定して進む/);
+  assert.match(screen, /ここまでを確定して進む/);
   assert.match(store, /endTurn/);
   assert.match(store, /resolveChain/);
   assert.match(screen, /event-stage/);

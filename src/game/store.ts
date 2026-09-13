@@ -9,6 +9,8 @@ import {
   reroll,
   resolveChain,
   roll,
+  skipRankBonus,
+  takeRankBonus,
   useTobacco,
   type GameState,
   type ItemType,
@@ -81,6 +83,12 @@ export const gameActions = {
   },
   resolveChain() {
     updateGame(resolveChain)
+  },
+  takeRankBonus() {
+    updateGame(takeRankBonus)
+  },
+  skipRankBonus() {
+    updateGame(skipRankBonus)
   },
   endTurn() {
     updateGame(endTurn)

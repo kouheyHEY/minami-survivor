@@ -1,59 +1,30 @@
-export const ITEM_TYPES = Object.freeze({
-  BADGE: 'badge',
-  CHARM: 'charm',
-  TOBACCO: 'tobacco',
-});
-
-export const ITEM_LABELS = Object.freeze({
-  [ITEM_TYPES.BADGE]: 'ぬいぐるみバッジ',
-  [ITEM_TYPES.CHARM]: 'めじるしチャーム',
-  [ITEM_TYPES.TOBACCO]: 'タバコ',
-});
-
+export const ITEM_TYPES = Object.freeze({ BADGE: 'badge', CHARM: 'charm', TOBACCO: 'tobacco' });
+export const ITEM_LABELS = Object.freeze({ badge: 'ぬいぐるみバッジ', charm: 'めじるしチャーム', tobacco: 'タバコ' });
 export const GOAL = 73;
 export const ITEM_SPACES = Object.freeze([10, 25, 45]);
-
 const itemTypes = Object.values(ITEM_TYPES);
-
-function copy(state) {
-  return structuredClone(state);
-}
+const copy = (state) => structuredClone(state);
 
 function assertPhase(state, expected) {
-  if (state.status !== 'playing' || state.phase !== expected) {
-    throw new Error(`Action requires phase "${expected}".`);
-  }
+  if (state.status !== 'playing' || state.phase !== expected) throw new Error(`Action requires phase "${expected}".`);
 }
-
 function validateDice(dice) {
-  if (
-    !Array.isArray(dice)
-    || dice.length !== 2
-    || dice.some((value) => !Number.isInteger(value) || value < 1 || value > 6)
-  ) {
-    throw new Error('Dice must contain two integers from 1 to 6.');
-  }
+  if (!Array.isArray(dice) || dice.length !== 2 || dice.some((value) => !Number.isInteger(value) || value < 1 || value > 6)) throw new Error('Dice must contain two integers from 1 to 6.');
 }
-
 function addLog(state, message, tone = 'neutral') {
-  state.log = [
-    { id: state.nextLogId, message, tone },
-    ...state.log,
-  ].slice(0, 12);
+  state.log = [{ id: state.nextLogId, message, tone }, ...state.log].slice(0, 12);
   state.nextLogId += 1;
 }
-
 function prepareTurnEnd(state) {
   state.phase = 'turn-complete';
   state.pendingRoll = null;
   state.pendingItemLevel = null;
+  state.pendingAfterItemPhase = null;
   return state;
 }
-
 function checkWinner(state) {
   const player = state.players[state.currentPlayer];
   if (player.position < GOAL) return false;
-
   state.status = 'won';
   state.winner = state.currentPlayer;
   state.phase = 'finished';
@@ -61,81 +32,61 @@ function checkWinner(state) {
   addLog(state, `${player.name}が${player.position}マス目に到達。勝利！`, 'win');
   return true;
 }
-
 function exchangeItemsOnCollision(state) {
   const current = state.players[state.currentPlayer];
   const opponent = state.players[state.currentPlayer === 0 ? 1 : 0];
   if (current.position !== opponent.position) return;
-
   [current.item, opponent.item] = [opponent.item, current.item];
   addLog(state, `同じ${current.position}マス目に着地。アイテムを交換！`, 'accent');
 }
-
-function continueAfterLanding(state) {
+const crossedItemSpace = (from, to) => ITEM_SPACES.find((space) => from < space && space <= to) ?? null;
+function phaseAfterMainMovement(state) {
   const player = state.players[state.currentPlayer];
-  if (ITEM_SPACES.includes(player.position) && player.item === null) {
-    state.phase = 'choose-item';
-    state.pendingItemLevel = player.position === 45 ? 'super' : 'normal';
-    addLog(
-      state,
-      `${player.position}マス目のアイテムマス！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`,
-      'accent',
-    );
+  const opponent = state.players[state.currentPlayer === 0 ? 1 : 0];
+  return player.position < opponent.position ? 'rank-bonus-choice' : 'turn-complete';
+}
+function offerItem(state, itemSpace, afterPhase) {
+  state.phase = 'choose-item';
+  state.pendingItemLevel = itemSpace === 45 ? 'super' : 'normal';
+  state.pendingAfterItemPhase = afterPhase;
+  addLog(state, `${itemSpace}マス目のアイテムマスを通過！${state.pendingItemLevel === 'super' ? ' SUPERアイテム' : ' アイテム'}を選ぼう。`, 'accent');
+  return state;
+}
+function continueAfterMovement(state, from, allowRankBonus = true) {
+  const player = state.players[state.currentPlayer];
+  const afterPhase = allowRankBonus ? phaseAfterMainMovement(state) : 'turn-complete';
+  const itemSpace = player.item === null ? crossedItemSpace(from, player.position) : null;
+  if (itemSpace !== null) return offerItem(state, itemSpace, afterPhase);
+  if (afterPhase === 'rank-bonus-choice') {
+    state.phase = afterPhase;
+    state.pendingRoll = null;
+    addLog(state, `${player.name}は現在2位。順位ボーナスで1マス追加できる。`, 'accent');
     return state;
   }
-
   return prepareTurnEnd(state);
 }
-
 function moveByDice(state, spaces) {
   const player = state.players[state.currentPlayer];
+  const from = player.position;
   player.position += spaces;
   addLog(state, `${player.name}が${spaces}マス進んで${player.position}マス目へ。`);
   if (checkWinner(state)) return state;
   exchangeItemsOnCollision(state);
-  return continueAfterLanding(state);
+  return continueAfterMovement(state, from);
 }
 
-export function createGame(names = ['プレイヤー1', 'プレイヤー2'], random = Math.random) {
-  const normalizedNames = [0, 1].map((index) => {
-    const value = String(names[index] || '').trim();
-    return value || `プレイヤー${index + 1}`;
-  });
-  const randomIndex = Math.min(itemTypes.length - 1, Math.floor(random() * itemTypes.length));
-  const openingItem = itemTypes[Math.max(0, randomIndex)];
-
+export function createGame(names = ['プレイヤー1', 'プレイヤー2']) {
+  const normalizedNames = [0, 1].map((index) => String(names[index] || '').trim() || `プレイヤー${index + 1}`);
   return {
-    status: 'playing',
-    phase: 'awaiting-roll',
-    currentPlayer: 0,
-    winner: null,
-    turn: 1,
-    pendingRoll: null,
-    pendingItemLevel: null,
-    chainStreak: 0,
-    chainRiskFree: false,
-    lastChainResult: null,
-    nextLogId: 3,
+    status: 'playing', phase: 'awaiting-roll', currentPlayer: 0, winner: null, turn: 1,
+    pendingRoll: null, pendingItemLevel: null, pendingAfterItemPhase: null,
+    chainStreak: 0, chainTotal: 0, lastChainResult: null, nextLogId: 3,
     players: [
-      {
-        id: 'player-1',
-        name: normalizedNames[0],
-        position: 0,
-        item: null,
-        turnsTaken: 0,
-        openingRerollAvailable: false,
-      },
-      {
-        id: 'player-2',
-        name: normalizedNames[1],
-        position: 0,
-        item: { type: openingItem, level: 'normal' },
-        turnsTaken: 0,
-        openingRerollAvailable: true,
-      },
+      { id: 'player-1', name: normalizedNames[0], position: 0, item: null, turnsTaken: 0, openingRerollAvailable: false },
+      { id: 'player-2', name: normalizedNames[1], position: 0, item: { type: ITEM_TYPES.CHARM, level: 'normal' }, turnsTaken: 0, openingRerollAvailable: true },
     ],
     log: [
-      { id: 2, message: `${normalizedNames[1]}は後手補正で「${ITEM_LABELS[openingItem]}」を獲得。`, tone: 'accent' },
+      { id: 2, message: `${normalizedNames[1]}は後手補正で「${ITEM_LABELS[ITEM_TYPES.CHARM]}」を獲得。`, tone: 'accent' },
       { id: 1, message: `${normalizedNames[0]}の手番からスタート。`, tone: 'neutral' },
     ],
   };
@@ -146,6 +97,8 @@ export function roll(state, dice) {
   validateDice(dice);
   const next = copy(state);
   next.lastChainResult = null;
+  next.chainStreak = 0;
+  next.chainTotal = 0;
   next.pendingRoll = { dice: [...dice], total: dice[0] + dice[1], adjustment: 0 };
   next.phase = 'roll-options';
   addLog(next, `${next.players[next.currentPlayer].name}の出目は ${dice[0]} + ${dice[1]} = ${next.pendingRoll.total}。`);
@@ -157,23 +110,15 @@ export function reroll(state, dice, source) {
   validateDice(dice);
   const next = copy(state);
   const player = next.players[next.currentPlayer];
-
   if (source === 'opening') {
-    if (next.currentPlayer !== 1 || player.turnsTaken !== 0 || !player.openingRerollAvailable) {
-      throw new Error('The opening reroll is not available.');
-    }
+    if (next.currentPlayer !== 1 || player.turnsTaken !== 0 || !player.openingRerollAvailable) throw new Error('The opening reroll is not available.');
     player.openingRerollAvailable = false;
     addLog(next, `${player.name}が後手補正で振り直した。`, 'accent');
   } else if (source === 'badge') {
-    if (player.item?.type !== ITEM_TYPES.BADGE || player.item.level !== 'normal') {
-      throw new Error('A normal badge is required to reroll.');
-    }
+    if (player.item?.type !== ITEM_TYPES.BADGE || player.item.level !== 'normal') throw new Error('A normal badge is required to reroll.');
     player.item = null;
     addLog(next, `${player.name}がぬいぐるみバッジで振り直した。`, 'accent');
-  } else {
-    throw new Error('Unknown reroll source.');
-  }
-
+  } else throw new Error('Unknown reroll source.');
   next.pendingRoll = { dice: [...dice], total: dice[0] + dice[1], adjustment: 0 };
   addLog(next, `振り直しの出目は ${dice[0]} + ${dice[1]} = ${next.pendingRoll.total}。`);
   return next;
@@ -184,72 +129,50 @@ export function confirmRoll(state, options = {}) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   let total = next.pendingRoll.total;
-
   if (options.useSuperBadge) {
-    if (player.item?.type !== ITEM_TYPES.BADGE || player.item.level !== 'super') {
-      throw new Error('A SUPER badge is required.');
-    }
+    if (player.item?.type !== ITEM_TYPES.BADGE || player.item.level !== 'super') throw new Error('A SUPER badge is required.');
     player.item = null;
     total = 7;
     addLog(next, `${player.name}がSUPERぬいぐるみバッジで出目を7にした！`, 'accent');
   }
-
   const adjustment = options.adjustment ?? 0;
   if (adjustment !== 0) {
-    if (player.item?.type !== ITEM_TYPES.CHARM) {
-      throw new Error('A charm is required to adjust the roll.');
-    }
+    if (player.item?.type !== ITEM_TYPES.CHARM) throw new Error('A charm is required to adjust the roll.');
     const limit = player.item.level === 'super' ? 2 : 1;
-    if (!Number.isInteger(adjustment) || Math.abs(adjustment) > limit) {
-      throw new Error(`The adjustment must be within ±${limit}.`);
-    }
+    if (!Number.isInteger(adjustment) || Math.abs(adjustment) > limit) throw new Error(`The adjustment must be within ±${limit}.`);
     player.item = null;
     total += adjustment;
     addLog(next, `${player.name}がめじるしチャームで合計を${adjustment > 0 ? '+' : ''}${adjustment}した。`, 'accent');
   }
-
   next.pendingRoll.adjustment = adjustment;
   next.pendingRoll.total = total;
-
   if (total === 7) {
-    const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
     next.chainStreak = 1;
-    next.chainRiskFree = player.position < opponent.position;
-    next.lastChainResult = {
-      outcome: 'started',
-      dice: [...next.pendingRoll.dice],
-      total,
-      streak: 1,
-      playerName: player.name,
-      source: options.useSuperBadge ? 'super-badge' : adjustment !== 0 ? 'charm' : 'dice',
-    };
+    next.chainTotal = 7;
+    next.lastChainResult = { outcome: 'started', dice: [...next.pendingRoll.dice], total, streak: 1, playerName: player.name, source: options.useSuperBadge ? 'super-badge' : adjustment !== 0 ? 'charm' : 'dice' };
     next.phase = 'chain-choice';
     next.pendingRoll = null;
-    addLog(next, `${player.name}が7をキープ。移動は連鎖確定まで保留。`, 'accent');
-    if (next.chainRiskFree) {
-      addLog(next, `劣勢ボーナス発動。今回の連鎖は失敗してもペナルティなし。`, 'accent');
-    }
+    addLog(next, `${player.name}が7！ 追加ロールの出目も移動数へ加算できる。`, 'accent');
     return next;
   }
-
   if (total === 3) {
+    const from = player.position;
     player.position += 3;
     addLog(next, `${player.name}が3マス進んで${player.position}マス目へ。`, 'accent');
     if (checkWinner(next)) return next;
     exchangeItemsOnCollision(next);
-
+    const crossed = crossedItemSpace(from, player.position);
     if (player.item === null) {
       next.phase = 'choose-item';
-      next.pendingItemLevel = player.position === 45 ? 'super' : 'normal';
+      next.pendingItemLevel = crossed === 45 ? 'super' : 'normal';
+      next.pendingAfterItemPhase = phaseAfterMainMovement(next);
       addLog(next, '合計3！ 好きなアイテムを1つ選ぼう。', 'accent');
       return next;
     }
-
     player.item.level = 'super';
     addLog(next, `合計3！ ${ITEM_LABELS[player.item.type]}がSUPERになった。`, 'accent');
-    return prepareTurnEnd(next);
+    return continueAfterMovement(next, from);
   }
-
   return moveByDice(next, total);
 }
 
@@ -259,14 +182,16 @@ export function chooseItem(state, itemType) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   if (player.item !== null) throw new Error('The player already has an item.');
-
   player.item = { type: itemType, level: next.pendingItemLevel || 'normal' };
-  addLog(
-    next,
-    `${player.name}が${player.item.level === 'super' ? 'SUPER ' : ''}${ITEM_LABELS[itemType]}を獲得。`,
-    'accent',
-  );
-
+  addLog(next, `${player.name}が${player.item.level === 'super' ? 'SUPER ' : ''}${ITEM_LABELS[itemType]}を獲得。`, 'accent');
+  const nextPhase = next.pendingAfterItemPhase || 'turn-complete';
+  next.pendingItemLevel = null;
+  next.pendingAfterItemPhase = null;
+  if (nextPhase === 'rank-bonus-choice') {
+    next.phase = nextPhase;
+    addLog(next, `${player.name}は現在2位。順位ボーナスで1マス追加できる。`, 'accent');
+    return next;
+  }
   return prepareTurnEnd(next);
 }
 
@@ -276,65 +201,49 @@ export function challengeChain(state, dice) {
   const next = copy(state);
   const total = dice[0] + dice[1];
   const player = next.players[next.currentPlayer];
-
+  next.chainTotal += total;
   if (total === 7) {
     next.chainStreak += 1;
-    next.lastChainResult = {
-      outcome: 'success',
-      dice: [...dice],
-      total,
-      streak: next.chainStreak,
-      playerName: player.name,
-      source: 'dice',
-    };
-    addLog(next, `7連鎖成功！ ${player.name}は${next.chainStreak}連チャン。`, 'accent');
+    next.lastChainResult = { outcome: 'success', dice: [...dice], total, streak: next.chainStreak, playerName: player.name, source: 'dice' };
+    addLog(next, `追加ロールも7！ 合計${next.chainTotal}マスを保留中。`, 'accent');
     return next;
   }
-
-  next.lastChainResult = {
-    outcome: 'failure',
-    dice: [...dice],
-    total,
-    streak: next.chainStreak,
-    playerName: player.name,
-    source: 'dice',
-  };
-  addLog(next, `連鎖チャレンジは ${dice[0]} + ${dice[1]} = ${total}。`, 'danger');
+  next.lastChainResult = { outcome: 'completed', dice: [...dice], total, streak: next.chainStreak, playerName: player.name, source: 'dice' };
   next.phase = 'chain-resolution';
-  addLog(
-    next,
-    next.chainRiskFree
-      ? `連鎖失敗。ただし劣勢ボーナスでペナルティなし。`
-      : `連鎖失敗。確定すると連鎖移動から2マス引かれる。`,
-    next.chainRiskFree ? 'accent' : 'danger',
-  );
+  addLog(next, `追加ロールは ${dice[0]} + ${dice[1]} = ${total}。合計${next.chainTotal}マス。`, 'accent');
   return next;
 }
 
 export function resolveChain(state) {
-  if (state.status !== 'playing' || !['chain-choice', 'chain-resolution'].includes(state.phase)) {
-    throw new Error('Action requires phase "chain-choice" or "chain-resolution".');
-  }
+  if (state.status !== 'playing' || !['chain-choice', 'chain-resolution'].includes(state.phase)) throw new Error('Action requires phase "chain-choice" or "chain-resolution".');
   const next = copy(state);
   const player = next.players[next.currentPlayer];
-  const failed = next.lastChainResult?.outcome === 'failure';
-  const penalty = failed && !next.chainRiskFree ? 2 : 0;
-  const movement = next.chainStreak * 7 - penalty;
-  const previousPosition = player.position;
-  player.position = Math.max(0, player.position + movement);
-  const actualMovement = player.position - previousPosition;
-  addLog(
-    next,
-    failed && next.chainRiskFree
-      ? `連鎖を確定。劣勢ボーナスでペナルティなし、7×${next.chainStreak}で${actualMovement}マス進み、${player.position}マス目へ。`
-      : failed
-      ? `連鎖を確定。7×${next.chainStreak}−2で${actualMovement}マス進み、${player.position}マス目へ。`
-      : `連鎖を確定。7×${next.chainStreak}で${actualMovement}マス進み、${player.position}マス目へ。`,
-    failed && !next.chainRiskFree ? 'danger' : 'accent',
-  );
+  const from = player.position;
+  player.position += next.chainTotal;
+  addLog(next, `連鎖を確定。合計${next.chainTotal}マス進み、${player.position}マス目へ。`, 'accent');
   if (checkWinner(next)) return next;
   exchangeItemsOnCollision(next);
-  return continueAfterLanding(next);
+  return continueAfterMovement(next, from);
+}
+
+export function takeRankBonus(state) {
+  assertPhase(state, 'rank-bonus-choice');
+  const next = copy(state);
+  const player = next.players[next.currentPlayer];
+  const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
+  if (player.position >= opponent.position) throw new Error('The rank bonus is only available to the trailing player.');
+  const from = player.position;
+  player.position += 1;
+  addLog(next, `${player.name}が順位ボーナスを選び、1マス進んだ。`, 'accent');
+  if (checkWinner(next)) return next;
+  return continueAfterMovement(next, from, false);
+}
+
+export function skipRankBonus(state) {
+  assertPhase(state, 'rank-bonus-choice');
+  const next = copy(state);
+  addLog(next, `${next.players[next.currentPlayer].name}は順位ボーナスを使わなかった。`);
+  return prepareTurnEnd(next);
 }
 
 export function endTurn(state) {
@@ -342,18 +251,16 @@ export function endTurn(state) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   player.turnsTaken += 1;
-  if (next.currentPlayer === 1 && player.turnsTaken === 1) {
-    player.openingRerollAvailable = false;
-  }
-
+  if (next.currentPlayer === 1 && player.turnsTaken === 1) player.openingRerollAvailable = false;
   const nextPlayer = next.currentPlayer === 0 ? 1 : 0;
   next.currentPlayer = nextPlayer;
   next.turn += 1;
   next.phase = 'awaiting-roll';
   next.pendingRoll = null;
   next.pendingItemLevel = null;
+  next.pendingAfterItemPhase = null;
   next.chainStreak = 0;
-  next.chainRiskFree = false;
+  next.chainTotal = 0;
   next.lastChainResult = null;
   addLog(next, `${player.name}が番を終了。${next.players[nextPlayer].name}の番。`);
   return next;
@@ -364,21 +271,14 @@ export function useTobacco(state) {
   const next = copy(state);
   const player = next.players[next.currentPlayer];
   const opponent = next.players[next.currentPlayer === 0 ? 1 : 0];
-  if (player.item?.type !== ITEM_TYPES.TOBACCO) {
-    throw new Error('Tobacco is required.');
-  }
-
+  if (player.item?.type !== ITEM_TYPES.TOBACCO) throw new Error('Tobacco is required.');
   const isSuper = player.item.level === 'super';
-  if (!isSuper) player.position = Math.max(0, player.position - 3);
+  if (isSuper) player.position += 3;
+  else player.position = Math.max(0, player.position - 3);
   opponent.position = Math.max(0, opponent.position - 7);
   player.item = null;
-  addLog(
-    next,
-    isSuper
-      ? `${player.name}がSUPERタバコを使用。相手を7マス戻した！`
-      : `${player.name}がタバコを使用。自分は3マス、相手は7マス戻った。`,
-    'danger',
-  );
+  addLog(next, isSuper ? `${player.name}がSUPERタバコを使用。自分は3マス進み、相手を7マス戻した！` : `${player.name}がタバコを使用。自分は3マス、相手は7マス戻った。`, 'danger');
+  checkWinner(next);
   return next;
 }
 

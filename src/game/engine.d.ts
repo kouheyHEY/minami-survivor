@@ -1,9 +1,9 @@
 export type ItemType = 'badge' | 'charm' | 'tobacco'
 export type ItemLevel = 'normal' | 'super'
-export type Phase = 'awaiting-roll' | 'roll-options' | 'choose-item' | 'chain-choice' | 'chain-resolution' | 'turn-complete' | 'finished'
+export type Phase = 'awaiting-roll' | 'roll-options' | 'choose-item' | 'chain-choice' | 'chain-resolution' | 'rank-bonus-choice' | 'turn-complete' | 'finished'
 export type LogTone = 'neutral' | 'accent' | 'danger' | 'win'
 export type DicePair = [number, number]
-export type ChainOutcome = 'started' | 'success' | 'failure'
+export type ChainOutcome = 'started' | 'success' | 'completed'
 
 export interface Item {
   type: ItemType
@@ -27,8 +27,9 @@ export interface GameState {
   turn: number
   pendingRoll: { dice: DicePair; total: number; adjustment: number } | null
   pendingItemLevel: ItemLevel | null
+  pendingAfterItemPhase: 'rank-bonus-choice' | 'turn-complete' | null
   chainStreak: number
-  chainRiskFree: boolean
+  chainTotal: number
   lastChainResult: {
     outcome: ChainOutcome
     dice: DicePair
@@ -47,13 +48,15 @@ export const ITEM_LABELS: Readonly<Record<ItemType, string>>
 export const GOAL: number
 export const ITEM_SPACES: readonly number[]
 
-export function createGame(names?: string[], random?: () => number): GameState
+export function createGame(names?: string[]): GameState
 export function roll(state: GameState, dice: DicePair): GameState
 export function reroll(state: GameState, dice: DicePair, source: 'opening' | 'badge'): GameState
 export function confirmRoll(state: GameState, options?: { adjustment?: number; useSuperBadge?: boolean }): GameState
 export function chooseItem(state: GameState, itemType: ItemType): GameState
 export function challengeChain(state: GameState, dice: DicePair): GameState
 export function resolveChain(state: GameState): GameState
+export function takeRankBonus(state: GameState): GameState
+export function skipRankBonus(state: GameState): GameState
 export function endTurn(state: GameState): GameState
 export function useTobacco(state: GameState): GameState
 export function randomDice(random?: () => number): DicePair

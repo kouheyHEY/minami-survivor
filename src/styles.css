@@ -129,13 +129,8 @@ button { cursor: pointer; }
 .dice-result .equals { font: 500 14px 'DM Mono'; color: #879087; }
 .dice-result > strong { font: 500 36px 'DM Mono'; color: var(--orange); }
 .chain-result { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 7px 9px; border: 1px solid #a8b836; border-radius: 10px; background: rgba(207,223,91,.28); animation: chain-burst .58s cubic-bezier(.2, .9, .25, 1.25); }
-.chain-result.is-failure { border-color: #d7857c; background: #f8ddd8; }
-.chain-result.is-risk-free { border-color: #58a6a0; background: #daf1ed; }
 .chain-result-copy { min-width: 0; display: grid; }
 .chain-result-copy span { font: 500 7px 'DM Mono'; letter-spacing: .08em; color: #6f7d19; }
-.chain-result.is-failure .chain-result-copy span { color: #a83d32; }
-.chain-result.is-risk-free .chain-result-copy span { color: #277973; }
-.chain-result-copy .risk-free-label { width: fit-content; margin: 2px 0; padding: 2px 5px; border-radius: 999px; background: #277973; color: white; font: 700 7px 'DM Mono'; letter-spacing: .04em; }
 .chain-result-copy strong { font-size: 16px; line-height: 1.1; }
 .chain-result-copy small { margin-top: 2px; color: #667169; font-size: 9px; }
 .chain-result-roll { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-family: 'DM Mono'; }

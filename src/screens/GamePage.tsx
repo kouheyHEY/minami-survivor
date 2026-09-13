@@ -153,19 +153,14 @@ function EventStage({ events }: { events: GameState['log'] }) {
 function ChainResult({ game }: { game: GameState }) {
   const result = game.lastChainResult
   if (!result) return null
-  const failed = result.outcome === 'failure'
   const resultKey = `${result.outcome}-${result.streak}-${result.dice.join('-')}`
 
   return (
-    <div key={resultKey} className={`chain-result ${failed ? 'is-failure' : 'is-success'} ${game.chainRiskFree ? 'is-risk-free' : ''}`} role="status">
+    <div key={resultKey} className="chain-result is-success" role="status">
       <div className="chain-result-copy">
-        <span>{failed ? 'CHAIN FAILED' : result.outcome === 'started' ? 'CHAIN START' : 'CHAIN SUCCESS'}</span>
-        {game.chainRiskFree && <b className="risk-free-label">劣勢ボーナス · NO RISK</b>}
-        <strong>{failed ? '連鎖失敗' : `${result.streak}連チャン！`}</strong>
-        <small>{failed
-          ? game.chainRiskFree ? `失敗ペナルティなし・移動 +${result.streak * 7}` : '確定時に合計移動から−2'
-          : game.chainRiskFree ? `失敗してもペナルティなし・移動 +${result.streak * 7} を保留中` : `移動 +${result.streak * 7} を保留中`}
-        </small>
+        <span>{result.outcome === 'completed' ? 'CHAIN TOTAL' : result.outcome === 'started' ? 'CHAIN START' : 'CHAIN CONTINUE'}</span>
+        <strong>{result.outcome === 'completed' ? `合計 ${game.chainTotal}マス` : `${result.streak}連チャン！`}</strong>
+        <small>{result.outcome === 'completed' ? `最後の出目 +${result.total} も加算` : `移動 +${game.chainTotal} を保留中`}</small>
       </div>
       <div className="chain-result-roll" aria-label={`連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`}>
         <b>{result.dice[0]}</b><i>+</i><b>{result.dice[1]}</b><i>{result.source === 'dice' ? '=' : '→'}</i><em>{result.total}</em>
@@ -248,11 +243,11 @@ function ActionPanel({ game }: { game: GameState }) {
       {game.phase === 'chain-choice' && (
         <>
           <ChainResult game={game} />
-          <h2>もう一度、7を狙う？</h2>
-          <p>駒はまだ動きません。確定するとまとめて進みます。</p>
+          <h2>7！ 追加ロールできる</h2>
+          <p>次の出目も足し算します。駒は確定するまで動きません。</p>
           <div className="action-buttons">
-            <button className="primary-button" onClick={gameActions.challenge}>連鎖チャレンジ</button>
-            <button className="ghost-button" onClick={gameActions.resolveChain}>連鎖を確定して進む</button>
+            <button className="primary-button" onClick={gameActions.challenge}>追加ロールを振る</button>
+            <button className="ghost-button" onClick={gameActions.resolveChain}>ここまでを確定して進む</button>
           </div>
         </>
       )}
@@ -260,15 +255,24 @@ function ActionPanel({ game }: { game: GameState }) {
       {game.phase === 'chain-resolution' && (
         <>
           <ChainResult game={game} />
-          <h2>連鎖結果を確定しよう</h2>
-          <p>{game.chainRiskFree
-            ? '劣勢ボーナスにより、失敗ペナルティなしで連鎖分を進みます。'
-            : '連鎖分をまとめて進み、失敗ペナルティの2マスを引きます。'}
-          </p>
+          <h2>合計移動を確定しよう</h2>
+          <p>7と追加ロールの出目を、そのまま合計して進みます。</p>
           <div className="action-buttons">
             <button className="primary-button" onClick={gameActions.resolveChain}>結果を確定して進む</button>
           </div>
         </>
+      )}
+
+      {game.phase === 'rank-bonus-choice' && (
+        <div className="turn-complete-panel">
+          <span>RANK BONUS</span>
+          <h2>順位ボーナスを使う？</h2>
+          <p>現在2位なので、任意で1マス追加できます。</p>
+          <div className="action-buttons">
+            <button className="primary-button" onClick={gameActions.takeRankBonus}>+1マス進む</button>
+            <button className="ghost-button" onClick={gameActions.skipRankBonus}>追加移動しない</button>
+          </div>
+        </div>
       )}
 
       {game.phase === 'turn-complete' && (
