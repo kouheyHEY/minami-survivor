@@ -786,29 +786,31 @@ const prefersReducedMotion = () =>
 // オンラインではサーバーが移動先まで一度に確定させるので、駒は画面側で1マスずつ追いかける。
 function useDisplayedPositions(targets: number[], animate: boolean) {
     const [shown, setShown] = useState(targets);
+    // 戻る移動や動かさない場合は、その場で目標の位置を返す。
+    // 古い位置を1回でも描画すると、移動中の表示が切り替わって画面が揺れるため。
+    const display = targets.map((target, index) =>
+        !animate || shown[index] > target ? target : shown[index],
+    );
+    const displayKey = display.join(",");
     const targetKey = targets.join(",");
-    const shownKey = shown.join(",");
 
     useEffect(() => {
-        const settled = targets.map((target, index) =>
-            !animate || shown[index] > target ? target : shown[index],
-        );
-        if (settled.join(",") !== shownKey) {
-            setShown(settled);
+        if (displayKey === targetKey) {
+            // 次に前へ進むときの出発点として、表示中の位置を覚えておく。
+            if (shown.join(",") !== targetKey) setShown(targets);
             return;
         }
-        if (settled.every((position, index) => position === targets[index])) return;
         const timer = setTimeout(() => {
-            setShown((current) =>
-                current.map((position, index) =>
+            setShown(
+                display.map((position, index) =>
                     position < targets[index] ? position + 1 : position,
                 ),
             );
         }, MOVEMENT_STEP_MS);
         return () => clearTimeout(timer);
-    }, [targetKey, shownKey, animate]);
+    }, [displayKey, targetKey]);
 
-    return shown;
+    return display;
 }
 
 function GameScreen() {
