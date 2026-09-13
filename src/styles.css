@@ -92,6 +92,17 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .item-slot strong { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
 .item-slot small { display: none; font: 500 9px 'DM Mono'; color: #6b766e; }
 .empty-item { font: 500 10px 'DM Mono'; color: #8c958f; }
+/* SUPER のアイテムは、盤面の SUPER マスと同じライム色で目立たせる */
+.item-slot.is-super { position: relative; border-color: var(--ink); background: linear-gradient(135deg, var(--lime), #eef5bd); animation: super-arrive .7s ease-out; }
+.item-slot.is-super b { color: var(--ink); }
+/* 名前を削らないよう、枠の右上に貼るように置く */
+.super-badge { position: absolute; top: -7px; right: 8px; padding: 1px 6px; border-radius: 99px; background: var(--ink); color: var(--lime); font: 500 8px/1.4 'DM Mono'; font-style: normal; letter-spacing: .08em; }
+
+@keyframes super-arrive {
+  0% { transform: scale(.94); box-shadow: 0 0 0 0 rgba(207,223,91,.9); }
+  60% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(207,223,91,0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(207,223,91,0); }
+}
 .item-inspector { min-width: 0; position: relative; }
 .item-inspector summary { list-style: none; cursor: help; }
 .item-inspector summary::-webkit-details-marker, .item-choice summary::-webkit-details-marker { display: none; }

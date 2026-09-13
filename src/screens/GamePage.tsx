@@ -301,7 +301,10 @@ function PlayerCard({
                     key={`${player.item.type}-${itemLevel ?? "none"}`}
                     className="item-inspector"
                 >
-                    <summary className="item-slot has-item" aria-label={`${item.label}の説明を表示`}>
+                    <summary
+                        className={`item-slot has-item ${itemLevel === "super" ? "is-super" : ""}`}
+                        aria-label={`${itemLevel === "super" ? "SUPER " : ""}${item.label}の説明を表示`}
+                    >
                         <>
                             <b>{item.icon}</b>
                         <span>
@@ -311,6 +314,9 @@ function PlayerCard({
                                 {item.short}
                                 </small>
                             </span>
+                            {itemLevel === "super" && (
+                                <em className="super-badge">SUPER</em>
+                            )}
                         </>
                     </summary>
                     <ItemDescription type={player.item.type} />
