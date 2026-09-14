@@ -629,7 +629,7 @@ function useRollCelebration(game: GameState) {
     return celebration;
 }
 
-// 画面いっぱいの「7！！」「3！」。操作の邪魔をしないよう、触れても下の画面に届く。
+// 画面いっぱいの「7!!」「3!」。操作の邪魔をしないよう、触れても下の画面に届く。
 function CelebrationOverlay({ celebration }: { celebration: Celebration | null }) {
     if (!celebration) return null;
     return createPortal(
@@ -638,7 +638,7 @@ function CelebrationOverlay({ celebration }: { celebration: Celebration | null }
             className={`celebration is-${celebration.kind}`}
             aria-hidden="true"
         >
-            <strong>{celebration.kind === "seven" ? "7！！" : "3！"}</strong>
+            <strong>{celebration.kind === "seven" ? "7!!" : "3!"}</strong>
             <span>
                 {celebration.kind === "seven" ? "追加ロールのチャンス" : "アイテムチャンス"}
             </span>

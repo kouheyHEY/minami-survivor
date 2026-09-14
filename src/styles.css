@@ -280,8 +280,8 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .celebration strong { position: relative; font: 900 clamp(120px, 38vw, 260px)/.9 'Noto Sans JP', sans-serif; letter-spacing: -.06em; -webkit-text-stroke: 3px var(--ink); }
 .celebration span { position: relative; padding: 7px 16px; border-radius: 99px; font-size: 15px; font-weight: 800; }
 .celebration.is-seven { background: radial-gradient(circle, rgba(240,101,53,.3), transparent 62%); animation: celebration-fade 1.4s ease forwards; }
-/* 「7！！」は3文字あるので、スマホの幅に収まる大きさにする */
-.celebration.is-seven strong { font-size: clamp(96px, 27vw, 240px); color: var(--orange); text-shadow: 7px 7px 0 var(--ink); animation: seven-pop .5s cubic-bezier(.2, .9, .25, 1.4); }
+/* 「7!!」がスマホの幅に収まる大きさにする */
+.celebration.is-seven strong { font-size: clamp(110px, 34vw, 250px); color: var(--orange); text-shadow: 7px 7px 0 var(--ink); animation: seven-pop .5s cubic-bezier(.2, .9, .25, 1.4); }
 .celebration.is-seven span { background: var(--ink); color: white; }
 .celebration.is-three { background: radial-gradient(circle, rgba(207,223,91,.5), transparent 64%); animation: celebration-fade 1.4s ease forwards; }
 .celebration.is-three::before { content: ''; position: absolute; top: 50%; left: 50%; width: 64vmin; height: 64vmin; margin: -32vmin 0 0 -32vmin; border: 8px solid var(--lime); border-radius: 50%; animation: three-ring .9s ease-out forwards; }

@@ -39,8 +39,10 @@ test('7は大きく表示して画面を揺らし、3は別の演出を出す', 
   ]);
 
   assert.match(screen, /function useRollCelebration/);
-  assert.match(screen, /7！！/);
-  assert.match(screen, /3！/);
+  // エクスクラメーションは半角
+  assert.match(screen, /"7!!"/);
+  assert.match(screen, /"3!"/);
+  assert.doesNotMatch(screen, /7！！|3！"/);
   assert.match(styles, /\.celebration\s*{[^}]*pointer-events:\s*none/);
   assert.match(styles, /@keyframes screen-shake/);
   assert.match(styles, /@keyframes three-ring/);
