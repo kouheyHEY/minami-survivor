@@ -1,10 +1,12 @@
 import { useSelector } from "@tanstack/react-store";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
     GOAL,
     ITEM_LABELS,
     ITEM_SPACES,
     ITEM_TYPES,
+    type DicePair,
     type GameState,
     type ItemType,
     type Player,
@@ -419,11 +421,229 @@ function Board({ players }: { players: GameState["players"] }) {
     );
 }
 
-function Dice({ value }: { value: number }) {
+const DICE_SPIN_MS = 70;
+const DICE_SETTLE_MS = 480;
+const CELEBRATION_MS = 1400;
+
+const randomFace = () => 1 + Math.floor(Math.random() * 6);
+
+// 回っている間は、目を次々に切り替える（見た目だけ。実際の出目は止めたときに決まる）。
+function useSpinningFace(spinning: boolean) {
+    const [face, setFace] = useState(randomFace);
+    useEffect(() => {
+        if (!spinning || prefersReducedMotion()) return;
+        const timer = setInterval(() => setFace(randomFace()), DICE_SPIN_MS);
+        return () => clearInterval(timer);
+    }, [spinning]);
+    return face;
+}
+
+// 出目が決まってから、少し回して止まるまでの間は false を返す。
+function useRevealAfter(key: string | null) {
+    const [revealedKey, setRevealedKey] = useState<string | null>(null);
+    useEffect(() => {
+        if (key === null) return;
+        const timer = setTimeout(
+            () => setRevealedKey(key),
+            prefersReducedMotion() ? 0 : DICE_SETTLE_MS,
+        );
+        return () => clearTimeout(timer);
+    }, [key]);
+    return key !== null && revealedKey === key;
+}
+
+function SpinningFace() {
+    const face = useSpinningFace(true);
+    return <>{face}</>;
+}
+
+function SpinningDie({ spinning }: { spinning: boolean }) {
+    const face = useSpinningFace(spinning);
     return (
-        <span className="die" aria-label={`サイコロの目 ${value}`}>
-            {value}
+        <span className={`die ${spinning ? "is-spinning" : "is-idle"}`}>
+            {spinning ? face : "?"}
         </span>
+    );
+}
+
+// 出た目。少し回ってから止まるので、相手の端末でも振った感じが出る。
+function Dice({ value }: { value: number }) {
+    const settled = useRevealAfter(String(value));
+    return (
+        <span
+            className={`die ${settled ? "is-settled" : "is-spinning"}`}
+            aria-label={settled ? `サイコロの目 ${value}` : "サイコロを振っています"}
+        >
+            {settled ? value : <SpinningFace />}
+        </span>
+    );
+}
+
+// 自分の手で振って、止める。止めた瞬間に実際の出目が決まる。
+// 回す前から「?」のサイコロを置いておき、ボタンの位置が動かないようにする。
+function RollAction({
+    label,
+    onStop,
+    extra,
+}: {
+    label: string;
+    onStop: () => void;
+    extra?: (spinning: boolean) => ReactNode;
+}) {
+    const [spinning, setSpinning] = useState(false);
+    const press = () => {
+        if (spinning) {
+            onStop();
+            return;
+        }
+        setSpinning(true);
+        playSound("dice", 0.5);
+    };
+
+    return (
+        <>
+            <div className="dice-result roll-stage" aria-hidden="true">
+                <SpinningDie spinning={spinning} />
+                <SpinningDie spinning={spinning} />
+            </div>
+            <div className="action-buttons">
+                <button
+                    className={`primary-button dice-button ${spinning ? "is-stop" : ""}`}
+                    onClick={press}
+                >
+                    {spinning ? "止める" : label}
+                </button>
+                {extra?.(spinning)}
+            </div>
+        </>
+    );
+}
+
+function OrderRollControl({ label, onStop }: { label: string; onStop: () => void }) {
+    const [spinning, setSpinning] = useState(false);
+    return (
+        <>
+            <span className="order-roll-dice" aria-hidden="true">
+                <SpinningDie spinning={spinning} />
+                <SpinningDie spinning={spinning} />
+            </span>
+            <button
+                className={`primary-button ${spinning ? "is-stop" : ""}`}
+                onClick={() => {
+                    if (spinning) {
+                        onStop();
+                        return;
+                    }
+                    setSpinning(true);
+                    playSound("dice", 0.5);
+                }}
+            >
+                {spinning ? "止める" : label}
+            </button>
+        </>
+    );
+}
+
+function OrderRollResult({ roll }: { roll: DicePair }) {
+    const revealed = useRevealAfter(roll.join("-"));
+    return (
+        <>
+            <span className="order-roll-dice">
+                <Dice value={roll[0]} />
+                <Dice value={roll[1]} />
+            </span>
+            <strong>{revealed ? `合計 ${roll[0] + roll[1]}` : "合計 ?"}</strong>
+        </>
+    );
+}
+
+type Celebration = { kind: "seven" | "three"; id: number };
+
+// 7や3が出たときの演出。サイコロが止まるのを待ってから大きく見せる。
+function useRollCelebration(game: GameState) {
+    const [celebration, setCelebration] = useState<Celebration | null>(null);
+    const previous = useRef<{
+        rollKey: string | null;
+        total: number | null;
+        chain: string;
+        phase: GameState["phase"];
+        nextLogId: number;
+    } | null>(null);
+    const timers = useRef<number[]>([]);
+
+    useEffect(() => () => timers.current.forEach((timer) => clearTimeout(timer)), []);
+
+    useEffect(() => {
+        const roll = game.phase === "roll-options" ? game.pendingRoll : null;
+        const current = {
+            rollKey: roll ? `${roll.dice.join("-")}-${game.nextLogId}` : null,
+            total: roll ? roll.dice[0] + roll.dice[1] : null,
+            chain: JSON.stringify(game.lastChainResult),
+            phase: game.phase,
+            nextLogId: game.nextLogId,
+        };
+        const before = previous.current;
+        previous.current = current;
+        if (!before || current.nextLogId === before.nextLogId) return;
+
+        const chain = game.lastChainResult;
+        let kind: Celebration["kind"] | null = null;
+        let delay = 0;
+        if (
+            current.rollKey !== null &&
+            current.rollKey !== before.rollKey &&
+            (current.total === 7 || current.total === 3)
+        ) {
+            // サイコロで7や3が出た
+            kind = current.total === 7 ? "seven" : "three";
+            delay = DICE_SETTLE_MS;
+        } else if (
+            chain &&
+            current.chain !== before.chain &&
+            (chain.outcome === "success" || (chain.outcome === "started" && chain.source !== "dice"))
+        ) {
+            // 追加ロールでまた7、またはアイテムで7にした
+            kind = "seven";
+            delay = chain.outcome === "success" ? DICE_SETTLE_MS : 0;
+        } else if (
+            before.phase === "roll-options" &&
+            before.total !== 3 &&
+            game.log.some((entry) => entry.id >= before.nextLogId && entry.message.startsWith("合計3"))
+        ) {
+            // チャームで合計を3にした
+            kind = "three";
+        }
+        if (!kind) return;
+
+        const id = current.nextLogId;
+        const found = kind;
+        timers.current.push(
+            window.setTimeout(() => setCelebration({ kind: found, id }), delay),
+            window.setTimeout(
+                () => setCelebration((shown) => (shown?.id === id ? null : shown)),
+                delay + CELEBRATION_MS,
+            ),
+        );
+    });
+
+    return celebration;
+}
+
+// 画面いっぱいの「7！！」「3！」。操作の邪魔をしないよう、触れても下の画面に届く。
+function CelebrationOverlay({ celebration }: { celebration: Celebration | null }) {
+    if (!celebration) return null;
+    return createPortal(
+        <div
+            key={celebration.id}
+            className={`celebration is-${celebration.kind}`}
+            aria-hidden="true"
+        >
+            <strong>{celebration.kind === "seven" ? "7！！" : "3！"}</strong>
+            <span>
+                {celebration.kind === "seven" ? "追加ロールのチャンス" : "アイテムチャンス"}
+            </span>
+        </div>,
+        document.body,
     );
 }
 
@@ -445,39 +665,58 @@ function EventFeed({ events }: { events: GameState["log"] }) {
 
 function ChainResult({ game }: { game: GameState }) {
     const result = game.lastChainResult;
+    const resultKey = result
+        ? `${result.outcome}-${result.streak}-${result.dice.join("-")}-${game.chainTotal}`
+        : null;
+    // 追加ロールの出目は、少し回してから見せる（最初の7は振った時点で見せているのでそのまま）。
+    const revealed = useRevealAfter(result && result.outcome !== "started" ? resultKey : null);
     if (!result) return null;
-    const resultKey = `${result.outcome}-${result.streak}-${result.dice.join("-")}`;
+    const shown = result.outcome === "started" || revealed;
 
     return (
-        <div key={resultKey} className="chain-result is-success" role="status">
+        <div
+            key={resultKey}
+            className={`chain-result ${shown ? "is-success" : "is-rolling"}`}
+            role="status"
+        >
             <div className="chain-result-copy">
                 <span>
-                    {result.outcome === "completed"
-                        ? "CHAIN TOTAL"
-                        : result.outcome === "started"
-                          ? "CHAIN START"
-                          : "CHAIN CONTINUE"}
+                    {!shown
+                        ? "EXTRA ROLL"
+                        : result.outcome === "completed"
+                          ? "CHAIN TOTAL"
+                          : result.outcome === "started"
+                            ? "CHAIN START"
+                            : "CHAIN CONTINUE"}
                 </span>
                 <strong>
-                    {result.outcome === "completed"
-                        ? `合計 ${game.chainTotal}マス`
-                        : `${result.streak}連チャン！`}
+                    {!shown
+                        ? "出目は…"
+                        : result.outcome === "completed"
+                          ? `合計 ${game.chainTotal}マス`
+                          : `${result.streak}連チャン！`}
                 </strong>
                 <small>
-                    {result.outcome === "completed"
-                        ? `最後の出目 +${result.total} も加算`
-                        : `移動 +${game.chainTotal} を保留中`}
+                    {!shown
+                        ? "サイコロが止まるのを待とう"
+                        : result.outcome === "completed"
+                          ? `最後の出目 +${result.total} も加算`
+                          : `移動 +${game.chainTotal} を保留中`}
                 </small>
             </div>
             <div
                 className="chain-result-roll"
-                aria-label={`連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`}
+                aria-label={
+                    shown
+                        ? `連鎖の出目 ${result.dice[0]} と ${result.dice[1]}、合計 ${result.total}`
+                        : "追加ロールを振っています"
+                }
             >
-                <b>{result.dice[0]}</b>
+                <b>{shown ? result.dice[0] : <SpinningFace />}</b>
                 <i>+</i>
-                <b>{result.dice[1]}</b>
+                <b>{shown ? result.dice[1] : <SpinningFace />}</b>
                 <i>{result.source === "dice" ? "=" : "→"}</i>
-                <em>{result.total}</em>
+                <em>{shown ? result.total : "?"}</em>
             </div>
         </div>
     );
@@ -600,16 +839,12 @@ function TurnOrderPanel({
                         >
                             <span>{player.name}</span>
                             {roll ? (
-                                <strong>
-                                    {roll[0]} + {roll[1]} = {roll[0] + roll[1]}
-                                </strong>
+                                <OrderRollResult roll={roll} />
                             ) : canRoll ? (
-                                <button
-                                    className="primary-button"
-                                    onClick={() => gameActions.rollForOrder(index as 0 | 1)}
-                                >
-                                    {selfIndex === null ? "サイコロを振る" : "自分のサイコロを振る"}
-                                </button>
+                                <OrderRollControl
+                                    label={selfIndex === null ? "サイコロを振る" : "自分のサイコロを振る"}
+                                    onStop={() => gameActions.rollForOrder(index as 0 | 1)}
+                                />
                             ) : (
                                 <small>まだ振っていません</small>
                             )}
@@ -728,21 +963,39 @@ function ActionPanel({
     const player = game.players[game.currentPlayer];
     const item = player.item;
     const roll = game.pendingRoll;
+    // 出目は少し回してから見せるので、止まるまでは合計や次の手を伏せておく。
+    const revealed = useRevealAfter(
+        roll ? `${roll.dice.join("-")}-${game.nextLogId}` : null,
+    );
 
     if (game.status === "won") {
         const winner = game.players[game.winner ?? 0];
+        const dissolve = () => {
+            if (window.confirm("部屋を解散すると、相手もこの部屋から出ます。解散しますか？")) {
+                void gameActions.dissolveRoom();
+            }
+        };
         return (
             <div className="winner-panel" role="status">
                 <span>WINNER</span>
                 <h2>{winner.name}</h2>
                 <p>{winner.position}マス目に到達しました。</p>
-                <button
-                    className="primary-button"
-                    onClick={gameActions.playAgain}
-                    disabled={busy}
-                >
-                    もう一度あそぶ
-                </button>
+                <div className="action-buttons">
+                    <button
+                        className="primary-button"
+                        onClick={gameActions.playAgain}
+                        disabled={busy}
+                    >
+                        もう一回
+                    </button>
+                    <button
+                        className="ghost-button"
+                        onClick={online ? dissolve : gameActions.reset}
+                        disabled={busy}
+                    >
+                        {online ? "部屋を解散する" : "終わる"}
+                    </button>
+                </div>
             </div>
         );
     }
@@ -778,23 +1031,23 @@ function ActionPanel({
             {game.phase === "awaiting-roll" && (
                 <>
                     <h2>サイコロを振ろう</h2>
-                    <p>2つの出目の合計だけ進みます。</p>
-                    <div className="action-buttons">
-                        <button
-                            className="primary-button dice-button"
-                            onClick={gameActions.roll}
-                        >
-                            2D6を振る <span>⚄ ⚁</span>
-                        </button>
-                        {item?.type === ITEM_TYPES.TOBACCO && (
-                            <button
-                                className="ghost-button danger"
-                                onClick={gameActions.useTobacco}
-                            >
-                                タバコを使う
-                            </button>
-                        )}
-                    </div>
+                    <p>「振る」で回して、好きなところで「止める」。</p>
+                    <RollAction
+                        key={`roll-${game.turn}`}
+                        label="2D6を振る"
+                        onStop={gameActions.roll}
+                        extra={(spinning) =>
+                            item?.type === ITEM_TYPES.TOBACCO && (
+                                <button
+                                    className="ghost-button danger"
+                                    onClick={gameActions.useTobacco}
+                                    disabled={spinning}
+                                >
+                                    タバコを使う
+                                </button>
+                            )
+                        }
+                    />
                 </>
             )}
 
@@ -802,29 +1055,31 @@ function ActionPanel({
                 <>
                     <div className="dice-result">
                         <Dice
-                            key={`die-1-${game.log[0]?.id}`}
+                            key={`die-1-${game.nextLogId}`}
                             value={roll.dice[0]}
                         />
                         <Dice
-                            key={`die-2-${game.log[0]?.id}`}
+                            key={`die-2-${game.nextLogId}`}
                             value={roll.dice[1]}
                         />
                         <span className="equals">=</span>
-                        <strong>{roll.total}</strong>
+                        <strong>{revealed ? roll.total : "?"}</strong>
                     </div>
                     <h2>
-                        {roll.total === 7
-                            ? "連鎖の入口！"
-                            : roll.total === 3
-                              ? "アイテムチャンス！"
-                              : `${roll.total}マス進む？`}
+                        {!revealed
+                            ? "出目は…"
+                            : roll.total === 7
+                              ? "連鎖の入口！"
+                              : roll.total === 3
+                                ? "アイテムチャンス！"
+                                : `${roll.total}マス進む？`}
                     </h2>
-                    <div className="action-buttons wrap">
+                    <div className={`action-buttons wrap ${revealed ? "" : "is-revealing"}`}>
                         <button
                             className="primary-button"
                             onClick={() => gameActions.confirm({})}
                         >
-                            {roll.total === 7 ? "7をキープ" : "この出目で進む"}
+                            {revealed && roll.total === 7 ? "7をキープ" : "この出目で進む"}
                         </button>
                         {player.turnsTaken === 0 &&
                             player.openingRerollAvailable && (
@@ -938,20 +1193,20 @@ function ActionPanel({
                     <ChainResult game={game} />
                     <h2>7！ 追加ロールできる</h2>
                     <p>次の出目も足し算します。駒は確定するまで動きません。</p>
-                    <div className="action-buttons">
-                        <button
-                            className="primary-button"
-                            onClick={gameActions.challenge}
-                        >
-                            追加ロールを振る
-                        </button>
-                        <button
-                            className="ghost-button"
-                            onClick={gameActions.resolveChain}
-                        >
-                            ここまでを確定して進む
-                        </button>
-                    </div>
+                    <RollAction
+                        key={`chain-${game.chainStreak}-${game.chainTotal}`}
+                        label="追加ロールを振る"
+                        onStop={gameActions.challenge}
+                        extra={(spinning) => (
+                            <button
+                                className="ghost-button"
+                                onClick={gameActions.resolveChain}
+                                disabled={spinning}
+                            >
+                                ここまでを確定して進む
+                            </button>
+                        )}
+                    />
                 </>
             )}
 
@@ -1138,6 +1393,7 @@ function MatchScreen({ game }: { game: GameState }) {
     })) as GameState["players"];
     const canControl = online === null || game.currentPlayer === selfIndex;
     useGameSounds(game, shown, online ? selfIndex : null);
+    const celebration = useRollCelebration(game);
 
     const leave = () => {
         if (online && !window.confirm("部屋を出ると、この対戦には戻れません。部屋を出ますか？")) return;
@@ -1145,8 +1401,9 @@ function MatchScreen({ game }: { game: GameState }) {
     };
 
     return (
-        <main className="game-page">
+        <main className={`game-page ${celebration?.kind === "seven" ? "is-shaking" : ""}`}>
             {showIntro && <IntroModal />}
+            <CelebrationOverlay celebration={celebration} />
             <div className="game-toolbar">
                 <div>
                     <span>{online ? `ONLINE · ROOM ${online.room.code}` : "LOCAL MATCH"}</span>

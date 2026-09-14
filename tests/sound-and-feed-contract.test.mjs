@@ -40,7 +40,7 @@ test('部屋コードは全角や日本語入力の変換中でも崩れない',
     read('../src/online/roomClient.ts'),
   ]);
 
-  assert.match(client, /normalize\('NFKC'\)/);
+  assert.match(client, /normalize\(["']NFKC["']\)/);
   assert.match(screen, /isComposing/);
   assert.match(screen, /onCompositionEnd/);
 });

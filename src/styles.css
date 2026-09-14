@@ -150,6 +150,19 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .die { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; background: white; border: 1px solid var(--line); font: 500 18px 'DM Mono'; box-shadow: 0 3px 0 var(--line); animation: dice-arrive .56s cubic-bezier(.2, .85, .25, 1.2); }
 .dice-result .equals { font: 500 14px 'DM Mono'; color: #879087; }
 .dice-result > strong { font: 500 36px 'DM Mono'; color: var(--orange); }
+/* 自分で振って止めるサイコロ */
+.roll-stage { margin-top: 8px; }
+.die.is-idle { color: #b3bab4; border-style: dashed; box-shadow: none; animation: none; }
+.die.is-spinning { color: var(--orange); animation: dice-wobble .14s linear infinite; }
+.dice-button.is-stop, .order-roll .primary-button.is-stop { background: var(--orange); box-shadow: 0 7px 0 #923310; }
+.action-buttons.is-revealing button { pointer-events: none; opacity: .55; }
+.chain-result.is-rolling { animation: none; border-style: dashed; background: rgba(255,255,255,.6); }
+
+@keyframes dice-wobble {
+  0% { transform: rotate(-10deg) translateY(0); }
+  50% { transform: rotate(10deg) translateY(-3px); }
+  100% { transform: rotate(-10deg) translateY(0); }
+}
 .chain-result { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 7px 9px; border: 1px solid #a8b836; border-radius: 10px; background: rgba(207,223,91,.28); animation: chain-burst .58s cubic-bezier(.2, .9, .25, 1.25); }
 .chain-result-copy { min-width: 0; display: grid; }
 .chain-result-copy span { font: 500 7px 'DM Mono'; letter-spacing: .08em; color: #6f7d19; }
@@ -185,7 +198,7 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .winner-panel { text-align: center; padding: 12px; }
 .winner-panel > span { font: 500 11px 'DM Mono'; color: var(--orange); letter-spacing: .18em; }
 .winner-panel h2 { font-size: clamp(38px, 6vw, 68px); margin: 8px 0; }
-.winner-panel .primary-button { margin-top: 18px; }
+.winner-panel .action-buttons { margin-top: 18px; }
 .log-panel summary { min-height: 38px; padding: 7px 10px; display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; align-items: center; cursor: pointer; list-style: none; }
 .log-panel summary::-webkit-details-marker { display: none; }
 .log-panel summary::after { content: '+'; grid-column: 4; font: 500 15px 'DM Mono'; }
@@ -237,9 +250,11 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
 /* 先手・後手の決定 */
 .order-rolls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 8px 0 4px; }
-.order-roll { min-width: 0; min-height: 84px; display: grid; gap: 6px; align-content: start; padding: 8px; border: 1.5px solid var(--line); border-radius: 10px; background: white; }
-.order-roll > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; }
-.order-roll strong { font: 500 20px 'DM Mono'; letter-spacing: -.04em; }
+.order-roll { min-width: 0; min-height: 128px; display: grid; gap: 6px; align-content: start; padding: 8px; border: 1.5px solid var(--line); border-radius: 10px; background: white; }
+.order-roll > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; }
+.order-roll strong { font: 500 16px 'DM Mono'; letter-spacing: -.02em; }
+.order-roll-dice { display: flex; gap: 6px; }
+.order-roll-dice .die { width: 30px; height: 30px; font-size: 15px; }
 .order-roll small { color: #768078; font-size: 10px; }
 .order-roll .primary-button { min-height: 40px; padding: 0 8px; font-size: 11px; }
 .order-roll.is-winner { border-color: var(--orange); background: #fff1e8; }
@@ -259,6 +274,49 @@ button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .intro-note { margin: 12px 0 0; color: #68736c; font-size: 11px; }
 .intro-actions { position: sticky; bottom: 0; margin: 14px -18px 0; padding: 12px 18px 16px; border-top: 1px solid var(--line); background: var(--cream); }
 .intro-actions .primary-button { width: 100%; }
+
+/* 7・3が出たときの演出（触れても下の画面に届く） */
+.celebration { position: fixed; inset: 0; z-index: 55; display: grid; place-content: center; justify-items: center; gap: 10px; pointer-events: none; overflow: hidden; }
+.celebration strong { position: relative; font: 900 clamp(120px, 38vw, 260px)/.9 'Noto Sans JP', sans-serif; letter-spacing: -.06em; -webkit-text-stroke: 3px var(--ink); }
+.celebration span { position: relative; padding: 7px 16px; border-radius: 99px; font-size: 15px; font-weight: 800; }
+.celebration.is-seven { background: radial-gradient(circle, rgba(240,101,53,.3), transparent 62%); animation: celebration-fade 1.4s ease forwards; }
+/* 「7！！」は3文字あるので、スマホの幅に収まる大きさにする */
+.celebration.is-seven strong { font-size: clamp(96px, 27vw, 240px); color: var(--orange); text-shadow: 7px 7px 0 var(--ink); animation: seven-pop .5s cubic-bezier(.2, .9, .25, 1.4); }
+.celebration.is-seven span { background: var(--ink); color: white; }
+.celebration.is-three { background: radial-gradient(circle, rgba(207,223,91,.5), transparent 64%); animation: celebration-fade 1.4s ease forwards; }
+.celebration.is-three::before { content: ''; position: absolute; top: 50%; left: 50%; width: 64vmin; height: 64vmin; margin: -32vmin 0 0 -32vmin; border: 8px solid var(--lime); border-radius: 50%; animation: three-ring .9s ease-out forwards; }
+.celebration.is-three strong { color: var(--lime); text-shadow: 0 0 28px rgba(207,223,91,.9), 6px 6px 0 var(--ink); animation: three-spin .7s cubic-bezier(.2, .9, .25, 1.2); }
+.celebration.is-three span { background: var(--lime); color: var(--ink); }
+.game-page.is-shaking { animation: screen-shake .5s cubic-bezier(.36, .07, .19, .97); }
+
+@keyframes seven-pop {
+  0% { opacity: 0; transform: scale(.2) rotate(-14deg); }
+  60% { opacity: 1; transform: scale(1.2) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes three-spin {
+  0% { opacity: 0; transform: scale(.3) rotate(-220deg); }
+  70% { opacity: 1; transform: scale(1.12) rotate(10deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes three-ring {
+  from { opacity: 1; transform: scale(.2); }
+  to { opacity: 0; transform: scale(1.5); }
+}
+
+@keyframes celebration-fade {
+  0%, 72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes screen-shake {
+  10%, 90% { transform: translate(-2px, 1px); }
+  20%, 80% { transform: translate(4px, -2px); }
+  30%, 50%, 70% { transform: translate(-8px, 3px); }
+  40%, 60% { transform: translate(8px, -3px); }
+}
 
 .event-feed { height: 42px; padding: 0 4px; overflow: hidden; }
 .event-line { margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; line-height: 21px; color: #7a857d; }
