@@ -618,7 +618,11 @@ function useRollCelebration(game: GameState) {
         const id = current.nextLogId;
         const found = kind;
         timers.current.push(
-            window.setTimeout(() => setCelebration({ kind: found, id }), delay),
+            window.setTimeout(() => {
+                // 効果音・画面の揺れ・大きな文字を、サイコロが止まったのと同じ瞬間にまとめて出す
+                playSound(found === "seven" ? "chain" : "item", 0.9);
+                setCelebration({ kind: found, id });
+            }, delay),
             window.setTimeout(
                 () => setCelebration((shown) => (shown?.id === id ? null : shown)),
                 delay + CELEBRATION_MS,
@@ -1343,8 +1347,13 @@ function useGameSounds(game: GameState, shown: number[], selfIndex: number | nul
         if (current.status === "won" && before.status !== "won") sounds.add("win");
         if (current.dice !== "null" && current.dice !== before.dice) sounds.add("dice");
         if (current.order !== before.order && game.orderRolls?.some(Boolean)) sounds.add("dice");
-        if (current.chain !== before.chain && game.lastChainResult) {
-            sounds.add(game.lastChainResult.outcome === "completed" ? "dice" : "chain");
+        // 7の効果音は、揺れや大きな文字と同じ瞬間に useRollCelebration で鳴らす。ここでは追加ロールの出目の音だけ。
+        if (
+            current.chain !== before.chain &&
+            game.lastChainResult &&
+            game.lastChainResult.outcome !== "started"
+        ) {
+            sounds.add("dice");
         }
         if (current.items.some((item, index) => item !== "null" && item !== before.items[index])) {
             sounds.add("item");

@@ -46,4 +46,7 @@ test('7は大きく表示して画面を揺らし、3は別の演出を出す', 
   assert.match(styles, /\.celebration\s*{[^}]*pointer-events:\s*none/);
   assert.match(styles, /@keyframes screen-shake/);
   assert.match(styles, /@keyframes three-ring/);
+  // 効果音は演出と同じ瞬間に鳴らし、「7をキープ」を押したときには鳴らさない
+  assert.match(screen, /playSound\(found === "seven" \? "chain" : "item"/);
+  assert.match(screen, /outcome !== "started"/);
 });
