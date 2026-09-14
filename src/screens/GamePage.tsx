@@ -519,6 +519,77 @@ function RollAction({
     );
 }
 
+// 追加ロールの画面。振る前も、振って合計を確定する前も同じ並びにして、
+// 止めた瞬間にレイアウトが動かないようにする（出目は同じサイコロの場所に止まる）。
+function ChainPanel({ game }: { game: GameState }) {
+    const resolving = game.phase === "chain-resolution";
+    const result = game.lastChainResult;
+    const rollKey = `${game.chainStreak}-${game.chainTotal}`;
+    // 回し始めたロールの目印。追加ロールでまた7が出たら目印が変わり、次のロールは止まった状態から始まる。
+    const [spinningKey, setSpinningKey] = useState<string | null>(null);
+    const spinning = !resolving && spinningKey === rollKey;
+    const revealed = useRevealAfter(
+        resolving && result ? `${result.dice.join("-")}-${game.nextLogId}` : null,
+    );
+
+    const pressRoll = () => {
+        if (spinning) {
+            gameActions.challenge();
+            return;
+        }
+        setSpinningKey(rollKey);
+        playSound("dice", 0.5);
+    };
+
+    return (
+        <>
+            <ChainResult game={game} />
+            <h2>{resolving ? "合計移動を確定しよう" : "7！ 追加ロールできる"}</h2>
+            <p>
+                {resolving
+                    ? "7と追加ロールの出目を、そのまま合計して進みます。"
+                    : "次の出目も足し算します。駒は確定するまで動きません。"}
+            </p>
+            <div className="dice-result roll-stage" aria-hidden="true">
+                {resolving && result ? (
+                    <>
+                        <Dice key={`chain-1-${game.nextLogId}`} value={result.dice[0]} />
+                        <Dice key={`chain-2-${game.nextLogId}`} value={result.dice[1]} />
+                    </>
+                ) : (
+                    <>
+                        <SpinningDie spinning={spinning} />
+                        <SpinningDie spinning={spinning} />
+                    </>
+                )}
+            </div>
+            <div className={`action-buttons ${resolving && !revealed ? "is-revealing" : ""}`}>
+                {resolving ? (
+                    <button className="primary-button" onClick={gameActions.resolveChain}>
+                        結果を確定して進む
+                    </button>
+                ) : (
+                    <>
+                        <button
+                            className={`primary-button dice-button ${spinning ? "is-stop" : ""}`}
+                            onClick={pressRoll}
+                        >
+                            {spinning ? "止める" : "追加ロールを振る"}
+                        </button>
+                        <button
+                            className="ghost-button"
+                            onClick={gameActions.resolveChain}
+                            disabled={spinning}
+                        >
+                            ここまでを確定して進む
+                        </button>
+                    </>
+                )}
+            </div>
+        </>
+    );
+}
+
 function OrderRollControl({ label, onStop }: { label: string; onStop: () => void }) {
     const [spinning, setSpinning] = useState(false);
     return (
@@ -750,13 +821,18 @@ function ItemPicker({
     }, []);
 
     return (
-        <div className="item-picker" ref={rootRef}>
+        <div className={`item-picker ${level === "super" ? "is-super" : ""}`} ref={rootRef}>
             <h2>
-                {current
-                    ? "アイテムを交換する？"
-                    : level === "super"
-                      ? "SUPERアイテムを選ぶ"
-                      : "アイテムを選ぶ"}
+                {level === "super" ? (
+                    <>
+                        <em className="super-pill">SUPER</em>
+                        {current ? "アイテムに交換する？" : "アイテムを選ぶ"}
+                    </>
+                ) : current ? (
+                    "アイテムを交換する？"
+                ) : (
+                    "アイテムを選ぶ"
+                )}
             </h2>
             <div className="item-choices" role="radiogroup" aria-label="選べるアイテム">
                 {(
@@ -774,6 +850,7 @@ function ItemPicker({
                     >
                         <b aria-hidden="true">{meta.icon}</b>
                         <strong>{meta.label}</strong>
+                        {level === "super" && <em className="super-badge">SUPER</em>}
                     </button>
                 ))}
             </div>
@@ -784,7 +861,11 @@ function ItemPicker({
                         {level === "super" ? selectedMeta.super : selectedMeta.normal}
                     </>
                 ) : current ? (
-                    `今は${ITEM_META[current.type].label}を所持中。交換するなら、タップして効果を確かめよう。`
+                    `今は${current.level === "super" ? "SUPER " : ""}${ITEM_META[current.type].label}を所持中。${
+                        level === "super"
+                            ? "ここで選ぶアイテムは最初からSUPERです。"
+                            : "交換するなら、タップして効果を確かめよう。"
+                    }`
                 ) : (
                     "アイテムをタップすると、ここに効果が出ます。持てるのは1つだけです。"
                 )}
@@ -796,12 +877,15 @@ function ItemPicker({
                     onClick={() => selected && gameActions.chooseItem(selected)}
                 >
                     {selectedMeta
-                        ? `${selectedMeta.label}${current ? "に交換" : "にする"}`
+                        ? level === "super"
+                            ? `SUPER ${selectedMeta.label}`
+                            : `${selectedMeta.label}${current ? "に交換" : "にする"}`
                         : "アイテムを選んでください"}
                 </button>
                 {canKeep && current && (
                     <button className="ghost-button" onClick={gameActions.keepItem}>
-                        今の{ITEM_META[current.type].label}を保持
+                        今の{current.level === "super" ? "SUPER " : ""}
+                        {ITEM_META[current.type].label}を保持
                     </button>
                 )}
             </div>
@@ -1192,43 +1276,8 @@ function ActionPanel({
                 </div>
             )}
 
-            {game.phase === "chain-choice" && (
-                <>
-                    <ChainResult game={game} />
-                    <h2>7！ 追加ロールできる</h2>
-                    <p>次の出目も足し算します。駒は確定するまで動きません。</p>
-                    <RollAction
-                        key={`chain-${game.chainStreak}-${game.chainTotal}`}
-                        label="追加ロールを振る"
-                        onStop={gameActions.challenge}
-                        extra={(spinning) => (
-                            <button
-                                className="ghost-button"
-                                onClick={gameActions.resolveChain}
-                                disabled={spinning}
-                            >
-                                ここまでを確定して進む
-                            </button>
-                        )}
-                    />
-                </>
-            )}
-
-            {game.phase === "chain-resolution" && (
-                <>
-                    <ChainResult game={game} />
-                    <h2>合計移動を確定しよう</h2>
-                    <p>7と追加ロールの出目を、そのまま合計して進みます。</p>
-                    <div className="action-buttons">
-                        <button
-                            className="primary-button"
-                            onClick={gameActions.resolveChain}
-                        >
-                            結果を確定して進む
-                        </button>
-                    </div>
-                </>
-            )}
+            {(game.phase === "chain-choice" ||
+                game.phase === "chain-resolution") && <ChainPanel game={game} />}
 
             {game.phase === "rank-bonus-choice" && (
                 <div className="turn-complete-panel">
